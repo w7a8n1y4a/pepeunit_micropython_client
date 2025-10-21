@@ -5,6 +5,7 @@ try:
 except Exception:
     import json
 
+print('\n')
 
 def _read_wifi_from_env(path):
     try:
@@ -17,30 +18,28 @@ def _read_wifi_from_env(path):
         return '', ''
 
 
-def connect_wifi():
-    ssid, password = _read_wifi_from_env('/env.json')
-    if not ssid:
-        # Fall back to placeholders if not provided
-        ssid = 'YOUR_SSID'
-        password = 'YOUR_PASSWORD'
+ssid, password = _read_wifi_from_env('/env.json')
+print('wifi', ssid, password)
 
-    sta = network.WLAN(network.STA_IF)
-    if not sta.active():
-        sta.active(True)
-    if not sta.isconnected():
-        sta.connect(ssid, password)
-        # Wait for connection
-        for _ in range(50):
-            if sta.isconnected():
-                break
-            time.sleep(0.2)
-    if sta.isconnected():
-        try:
-            print('network config:', sta.ifconfig())
-        except Exception:
-            pass
+sta = network.WLAN(network.STA_IF)
+
+if not sta.active():
+    sta.active(True)
+
+if not sta.isconnected():
+    sta.connect(ssid, password)
+    # Wait for connection
+    for _ in range(50):
+        if sta.isconnected():
+            break
+        time.sleep(0.2)
+
+if sta.isconnected():
+    try:
+        print('network config:', sta.ifconfig())
+    except Exception:
+        pass
 
 
-connect_wifi()
 
 

@@ -19,7 +19,6 @@ class PepeunitMqttClient:
     def _get_client(self):
         if MQTTClient is None:
             raise ImportError('umqtt.simple is required')
-        # Client id can be token tail to avoid collisions
         cid = self.settings.PEPEUNIT_TOKEN[-12:] if self.settings.PEPEUNIT_TOKEN else 'pepeunit'
         c = MQTTClient(client_id=cid, server=self.settings.MQTT_URL, port=self.settings.MQTT_PORT, user=self.settings.PEPEUNIT_TOKEN, password='')
         c.set_callback(self._on_message)
@@ -61,6 +60,7 @@ class PepeunitMqttClient:
                 self.logger.error('Publish error: ' + str(e))
 
     def _on_message(self, topic, msg):
+        print(msg)
         class Msg:
             pass
         m = Msg()
@@ -73,10 +73,8 @@ class PepeunitMqttClient:
             self.logger.error('Error processing MQTT message: ' + str(e))
 
     def check_msg(self):
-        # Non-blocking check for new messages (call in main loop)
         if self._client:
             try:
                 self._client.check_msg()
             except Exception:
                 pass
-

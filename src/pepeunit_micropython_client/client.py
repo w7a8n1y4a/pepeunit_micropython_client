@@ -1,6 +1,9 @@
 import ujson as json
 import ubinascii as binascii
 import time
+import gc
+import machine
+import os
 
 from .settings import Settings
 from .file_manager import FileManager
@@ -22,7 +25,8 @@ class PepeunitClient:
         mqtt_client=None,
         rest_client=None,
         cycle_speed=0.1,
-        restart_mode=RestartMode.ENV_SCHEMA_ONLY
+        restart_mode=RestartMode.ENV_SCHEMA_ONLY,
+        sta=None
     ):
         self.env_file_path = env_file_path
         self.schema_file_path = schema_file_path
@@ -31,6 +35,7 @@ class PepeunitClient:
         self.enable_rest = enable_rest
         self.cycle_speed = cycle_speed
         self.restart_mode = restart_mode
+        self.sta = sta
 
         self.settings = Settings(env_file_path)
         self.schema = SchemaManager(schema_file_path)
@@ -62,10 +67,8 @@ class PepeunitClient:
         if len(token_parts) != 3:
             raise ValueError('Invalid JWT token format')
         payload = token_parts[1]
-        # MicroPython: add padding for base64 urlsafe
         while len(payload) % 4 != 0:
             payload += '='
-        # urlsafe base64 decode
         try:
             data = binascii.a2b_base64(payload.replace('-', '+').replace('_', '/'))
         except Exception:
@@ -79,7 +82,6 @@ class PepeunitClient:
         self.cycle_speed = speed
 
     def update_device_program(self, archive_path):
-        # On MicroPython we avoid process restart; only update env/schema/data
         unit_directory = self._dirname(self.env_file_path) or '/'
         FileManager.extract_tar_gz(archive_path, unit_directory)
         try:
@@ -102,18 +104,29 @@ class PepeunitClient:
             raise
 
     def get_system_state(self):
-        return {
-            'millis': int(time.time() * 1000),
-            'mem_free': 0,
-            'mem_alloc': 0,
-            'freq': 0,
-            'commit_version': self.settings.COMMIT_VERSION,
+        gc.collect()
+        state = {
+            'millis': time.ticks_ms(),
+            'mem_free': gc.mem_free(),
+            'mem_alloc': gc.mem_alloc(),
+            'freq': machine.freq(),
+            'statvfs': os.statvfs('/'),
+            'commit_version': self.settings.COMMIT_VERSION
         }
+
+        try:
+            state['ifconfig'] = self.sta.ifconfig()
+        except Exception as e:
+            pass
+
+        return state
+
 
     def set_mqtt_input_handler(self, handler):
         self.mqtt_input_handler = handler
-        if self.mqtt_client:
+        if self.mqtt_client:    
             def combined_handler(msg):
+                self.logger.info('MQTT input handler called with topic: ' + msg.topic)
                 self._base_mqtt_input_func(msg)
                 if self.mqtt_input_handler:
                     self.mqtt_input_handler(self, msg)
@@ -294,4 +307,3 @@ class PepeunitClient:
     def _dirname(self, path):
         i = path.rfind('/')
         return path[:i] if i > 0 else '/'
-

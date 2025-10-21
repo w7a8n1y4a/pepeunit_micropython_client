@@ -9,6 +9,10 @@ def output_handler(client: PepeunitClient):
     pass
 
 
+def mqtt_input_handler(client: PepeunitClient, msg):
+    print(msg)
+
+
 def main():
     client = PepeunitClient(
         env_file_path='/env.json',
@@ -16,7 +20,10 @@ def main():
         log_file_path='/log.json',
         enable_mqtt=True,
         enable_rest=False,
+        sta=sta
     )
+
+    client.set_mqtt_input_handler(mqtt_input_handler)
 
     client.mqtt_client.connect()
     client.subscribe_all_schema_topics()

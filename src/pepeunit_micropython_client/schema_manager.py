@@ -77,4 +77,3 @@ class SchemaManager:
                 if topic_url == topic_name:
                     return topic_key
         return None
-

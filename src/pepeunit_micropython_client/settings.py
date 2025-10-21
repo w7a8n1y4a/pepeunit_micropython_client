@@ -1,6 +1,7 @@
 import ujson as json
 import os
 
+
 class Settings:
 
     PEPEUNIT_URL = ''
@@ -64,4 +65,3 @@ class Settings:
                 if not b:
                     break
                 d.write(b)
-

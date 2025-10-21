@@ -40,7 +40,6 @@ class Logger:
             pass
 
     def _iso_now(self):
-        # MicroPython has limited datetime; use epoch ms
         return str(int(time.time()))
 
     def debug(self, message):
@@ -65,4 +64,3 @@ class Logger:
 
     def reset_log(self):
         FileManager.write_json(self.log_file_path, [])
-

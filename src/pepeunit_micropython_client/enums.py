@@ -48,8 +48,7 @@ class BaseOutputTopicType:
 
 
 class RestartMode:
-    RESTART_POPEN = 'restart_popen'  # not supported on MicroPython
-    RESTART_EXEC = 'restart_exec'    # not supported on MicroPython
+    RESTART_POPEN = 'restart_popen'
+    RESTART_EXEC = 'restart_exec'
     ENV_SCHEMA_ONLY = 'env_schema_only'
     NO_RESTART = 'no_restart'
-
