@@ -60,12 +60,11 @@ class PepeunitMqttClient:
                 self.logger.error('Publish error: ' + str(e))
 
     def _on_message(self, topic, msg):
-        print(msg)
         class Msg:
             pass
         m = Msg()
         m.topic = topic.decode('utf-8') if isinstance(topic, bytes) else topic
-        m.payload = msg
+        m.payload = msg.decode('utf-8') if isinstance(msg, bytes) else msg
         try:
             if self._input_handler:
                 self._input_handler(m)

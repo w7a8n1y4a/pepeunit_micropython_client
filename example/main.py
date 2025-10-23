@@ -19,7 +19,7 @@ def main():
         schema_file_path='/schema.json',
         log_file_path='/log.json',
         enable_mqtt=True,
-        enable_rest=False,
+        enable_rest=True,
         sta=sta
     )
 

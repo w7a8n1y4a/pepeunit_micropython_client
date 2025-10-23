@@ -14,7 +14,7 @@ esptool.py --port /dev/ttyUSB0 --baud 460800 write_flash --flash_size=detect 0 E
 Minimal MicroPython client mirroring the Python client's public API, adapted for constrained boards (ESP8266/ESP32).
 
 - MQTT: `umqtt.simple`
-- HTTP/REST: `urequests`
+- HTTP/REST: `mrequests`
 - Archive: `uzlib` + simple tar reader (no `tarfile`)
 - FS: basic file ops
 

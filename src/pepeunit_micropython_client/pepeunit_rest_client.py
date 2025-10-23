@@ -1,7 +1,8 @@
+import gc
 from .file_manager import FileManager
 
 try:
-    import urequests as requests
+    import mrequests as requests
 except ImportError:
     requests = None
 
@@ -10,7 +11,7 @@ class PepeunitRestClient:
     def __init__(self, settings):
         self.settings = settings
         if requests is None:
-            raise ImportError('urequests is required for REST functionality')
+            raise ImportError('mrequests is required for REST functionality')
 
     def _get_auth_headers(self):
         return {
@@ -19,6 +20,7 @@ class PepeunitRestClient:
         }
 
     def _get_base_url(self):
+        gc.collect()
         return (
             self.settings.HTTP_TYPE
             + '://'
@@ -41,8 +43,11 @@ class PepeunitRestClient:
 
     def download_env(self, unit_uuid, file_path):
         url = self._get_base_url() + '/units/env/' + unit_uuid
+        print('url', url)
         headers = self._get_auth_headers()
+        print('headers', headers)
         r = requests.get(url, headers=headers)
+        print('r', r)
         if r.status_code >= 400:
             raise OSError('HTTP error ' + str(r.status_code))
         data = r.json()

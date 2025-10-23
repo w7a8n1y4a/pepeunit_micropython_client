@@ -133,16 +133,11 @@ class PepeunitClient:
             self.mqtt_client.set_input_handler(combined_handler)
 
     def _base_mqtt_input_func(self, msg):
-        topic = msg.topic
-        try:
-            payload = json.loads(msg.payload.decode()) if hasattr(msg.payload, 'decode') else json.loads(msg.payload)
-        except Exception:
-            payload = {}
         try:
             for topic_key in self.schema.input_base_topic:
-                if topic in self.schema.input_base_topic[topic_key]:
+                if msg.topic in self.schema.input_base_topic[topic_key]:
                     if topic_key == BaseInputTopicType.UPDATE_PEPEUNIT:
-                        self._handle_update(payload)
+                        self._handle_update(msg)
                     elif topic_key == BaseInputTopicType.ENV_UPDATE_PEPEUNIT:
                         self._handle_env_update()
                     elif topic_key == BaseInputTopicType.SCHEMA_UPDATE_PEPEUNIT:
@@ -162,8 +157,11 @@ class PepeunitClient:
     def download_env(self, file_path):
         if not self.enable_rest or not self.rest_client:
             raise RuntimeError('REST client is not enabled or available')
+        print('one')
         self.rest_client.download_env(self.unit_uuid, file_path)
+        print('two')
         self.settings.load_from_file()
+        print('three')
         self.logger.info('Environment file downloaded and updated from ' + file_path)
 
     def download_schema(self, file_path):
@@ -198,7 +196,13 @@ class PepeunitClient:
             self.logger.error('Update failed: ' + str(e))
             raise
 
-    def _handle_update(self, payload):
+    def _handle_update(self, msg):
+        try:
+            payload = json.loads(msg.payload)
+            gc.collect()
+        except Exception:
+            payload = {}
+
         self.logger.info('Update request received via MQTT')
         if self.enable_rest and self.rest_client:
             try:
