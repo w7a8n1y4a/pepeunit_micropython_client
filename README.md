@@ -11,6 +11,24 @@ esptool.py --port /dev/ttyUSB0 --baud 460800 write_flash --flash_size=detect 0 E
 
 ```
 
+## mpy gen
+
+```bash
+git clone https://github.com/micropython/micropython.git
+cd micropython/mpy-cross
+make -j
+```
+
+```bash
+set SRC /home/w7a8n1y4a/Documents/gitlab/pepe/pepeunit/libs/pepeunit_micropython_client/src/pepeunit_micropython_client
+set DST /home/w7a8n1y4a/Documents/gitlab/pepe/pepeunit/libs/pepeunit_micropython_client/example/lib/pepeunit_micropython_client
+
+for f in $SRC/*.py
+    set base (basename $f .py)
+    micropython/mpy-cross/build/mpy-cross -O2 -o $DST/$base.mpy $f
+end
+```
+
 Minimal MicroPython client mirroring the Python client's public API, adapted for constrained boards (ESP8266/ESP32).
 
 - MQTT: `umqtt.simple`
