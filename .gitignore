@@ -1,4 +1,5 @@
 example/lib/pepeunit_micropython_client
 
+*.mpy
 env.json
 schema.json
