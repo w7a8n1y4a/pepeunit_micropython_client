@@ -9,8 +9,6 @@ from .settings import Settings
 from .file_manager import FileManager
 from .logger import Logger
 from .schema_manager import SchemaManager
-from .pepeunit_mqtt_client import PepeunitMqttClient
-from .pepeunit_rest_client import PepeunitRestClient
 from .enums import BaseInputTopicType, BaseOutputTopicType, RestartMode
 
 
@@ -42,8 +40,11 @@ class PepeunitClient:
 
         self.logger = Logger(log_file_path, None, self.schema, self.settings)
 
+        print('0free',  gc.mem_free())
         self.mqtt_client = (mqtt_client if mqtt_client else self._get_default_mqtt_client()) if enable_mqtt else None
+        print('1free',  gc.mem_free())
         self.rest_client = (rest_client if rest_client else self._get_default_rest_client()) if enable_rest else None
+        print('zero_free',  gc.mem_free())
 
         if self.mqtt_client:
             self.logger.mqtt_client = self.mqtt_client
@@ -56,9 +57,13 @@ class PepeunitClient:
         self._last_state_send = 0
 
     def _get_default_mqtt_client(self):
+        from .pepeunit_mqtt_client import PepeunitMqttClient
         return PepeunitMqttClient(self.settings, self.schema, self.logger)
 
     def _get_default_rest_client(self):
+        print('2free',  gc.mem_free())
+        from .pepeunit_rest_client import PepeunitRestClient
+        print('zero_two_free',  gc.mem_free())
         return PepeunitRestClient(self.settings)
 
     @property
@@ -157,11 +162,8 @@ class PepeunitClient:
     def download_env(self, file_path):
         if not self.enable_rest or not self.rest_client:
             raise RuntimeError('REST client is not enabled or available')
-        print('one')
         self.rest_client.download_env(self.unit_uuid, file_path)
-        print('two')
         self.settings.load_from_file()
-        print('three')
         self.logger.info('Environment file downloaded and updated from ' + file_path)
 
     def download_schema(self, file_path):

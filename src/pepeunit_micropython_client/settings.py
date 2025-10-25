@@ -61,7 +61,7 @@ class Settings:
     def copy_file(src, dst):
         with open(src, 'rb') as s, open(dst, 'wb') as d:
             while True:
-                b = s.read(1024)
+                b = s.read(256)
                 if not b:
                     break
                 d.write(b)

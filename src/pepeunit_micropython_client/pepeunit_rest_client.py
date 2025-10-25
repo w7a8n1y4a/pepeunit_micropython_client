@@ -1,11 +1,12 @@
 import gc
+print('3free',  gc.mem_free())
 from .file_manager import FileManager
-
+print('4free',  gc.mem_free())
 try:
     import mrequests as requests
 except ImportError:
     requests = None
-
+print('5free',  gc.mem_free())
 
 class PepeunitRestClient:
     def __init__(self, settings):

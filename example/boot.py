@@ -1,5 +1,7 @@
 import network
 import time
+import gc
+
 try:
     import ujson as json
 except Exception:
@@ -40,6 +42,7 @@ if sta.isconnected():
     except Exception:
         pass
 
-
-
-
+print(gc.collect())
+print('free',  gc.mem_free())
+print('alloc',  gc.mem_alloc())
+print('end boot')

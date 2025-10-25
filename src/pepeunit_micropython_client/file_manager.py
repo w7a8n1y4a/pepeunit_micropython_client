@@ -40,7 +40,7 @@ class FileManager:
         FileManager._ensure_dir(FileManager._dirname(destination_path))
         with open(source_path, 'rb') as s, open(destination_path, 'wb') as d:
             while True:
-                b = s.read(1024)
+                b = s.read(256)
                 if not b:
                     break
                 d.write(b)
@@ -87,7 +87,7 @@ class FileManager:
         with open(file_path, 'rb') as fin, open(tar_tmp, 'wb') as fout:
             decomp = uzlib.DecompIO(fin, 15)
             while True:
-                chunk = decomp.read(1024)
+                chunk = decomp.read(256)
                 if not chunk:
                     break
                 fout.write(chunk)
