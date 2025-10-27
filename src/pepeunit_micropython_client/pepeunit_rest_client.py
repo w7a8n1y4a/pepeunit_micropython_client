@@ -1,18 +1,12 @@
 import gc
-print('3free',  gc.mem_free())
+import ujson as json
+
 from .file_manager import FileManager
-print('4free',  gc.mem_free())
-try:
-    import mrequests as requests
-except ImportError:
-    requests = None
-print('5free',  gc.mem_free())
+
 
 class PepeunitRestClient:
     def __init__(self, settings):
         self.settings = settings
-        if requests is None:
-            raise ImportError('mrequests is required for REST functionality')
 
     def _get_auth_headers(self):
         return {
@@ -30,71 +24,52 @@ class PepeunitRestClient:
             + self.settings.PEPEUNIT_API_ACTUAL_PREFIX
         )
 
-    def download_update(self, unit_uuid, file_path):
-        wbits = 9
-        level = 9
-        url = self._get_base_url() + '/units/firmware/tgz/' + unit_uuid + '?wbits=' + str(wbits) + '&level=' + str(level)
-        headers = self._get_auth_headers()
-        r = requests.get(url, headers=headers)
-        if r.status_code >= 400:
+    def _download_file(self, url, headers, file_path):
+        from mrequests import get as m_get
+        gc.collect()
+
+        r = m_get(url=url, headers=headers)
+
+        if r.status_code == 200:
+            r.save(file_path, buf=bytearray(256))
+        elif  r.status_code >= 400:
             raise OSError('HTTP error ' + str(r.status_code))
-        with open(file_path, 'wb') as f:
-            f.write(r.content)
         r.close()
+        gc.collect()
+
+
+    def download_update(self, unit_uuid, file_path):
+        url = self._get_base_url() + '/units/firmware/tgz/' + unit_uuid + '?wbits=9&level=9'
+        headers = self._get_auth_headers()
+        
+        self._download_file(url, headers, file_path)
 
     def download_env(self, unit_uuid, file_path):
         url = self._get_base_url() + '/units/env/' + unit_uuid
-        print('url', url)
         headers = self._get_auth_headers()
-        print('headers', headers)
-        r = requests.get(url, headers=headers)
-        print('r', r)
-        if r.status_code >= 400:
-            raise OSError('HTTP error ' + str(r.status_code))
-        data = r.json()
-        if isinstance(data, str):
-            try:
-                import ujson as json
-                data = json.loads(data)
-            except Exception:
-                pass
-        FileManager.write_json(file_path, data)
-        r.close()
+        self._download_file(url, headers, file_path)
+        
+        FileManager.write_json(file_path, json.loads(FileManager.read_json(file_path)))
 
     def download_schema(self, unit_uuid, file_path):
         url = self._get_base_url() + '/units/get_current_schema/' + unit_uuid
         headers = self._get_auth_headers()
-        r = requests.get(url, headers=headers)
-        if r.status_code >= 400:
-            raise OSError('HTTP error ' + str(r.status_code))
-        data = r.json()
-        if isinstance(data, str):
-            try:
-                import ujson as json
-                data = json.loads(data)
-            except Exception:
-                pass
-        FileManager.write_json(file_path, data)
-        r.close()
 
-    def download_file_from_url(self, url, filepath):
-        r = requests.get(url)
-        if r.status_code >= 400:
-            raise OSError('HTTP error ' + str(r.status_code))
-        with open(filepath, 'wb') as f:
-            f.write(r.content)
-        r.close()
+        self._download_file(url, headers, file_path)
+
+        FileManager.write_json(file_path, json.loads(json.loads(FileManager.read_json(file_path))))
 
     def set_state_storage(self, unit_uuid, state):
         url = self._get_base_url() + '/unit/' + unit_uuid
         headers = self._get_auth_headers()
         headers['content-type'] = 'application/json'
         try:
-            import ujson as json
             body = json.dumps(state)
         except Exception:
             body = '{}'
-        r = requests.put(url, headers=headers, data=body)
+
+        from mrequests import put as m_put
+        r = m_put(url, headers=headers, data=body)
         if r.status_code >= 400:
             raise OSError('HTTP error ' + str(r.status_code))
         r.close()
@@ -102,7 +77,9 @@ class PepeunitRestClient:
     def get_state_storage(self, unit_uuid):
         url = self._get_base_url() + '/unit/' + unit_uuid
         headers = self._get_auth_headers()
-        r = requests.get(url, headers=headers)
+
+        from mrequests import get as m_get
+        r = m_get(url, headers=headers)
         if r.status_code >= 400:
             raise OSError('HTTP error ' + str(r.status_code))
         data = r.json()

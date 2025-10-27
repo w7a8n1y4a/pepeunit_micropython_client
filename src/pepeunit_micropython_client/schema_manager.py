@@ -5,17 +5,10 @@ from .enums import SearchTopicType, SearchScope, DestinationTopicType
 class SchemaManager:
     def __init__(self, schema_file_path):
         self.schema_file_path = schema_file_path
-        self._schema_data = self._load_schema()
-
-    def _load_schema(self):
-        return FileManager.read_json(self.schema_file_path)
+        self._schema_data = self.update_from_file()
 
     def update_from_file(self):
-        self._schema_data = self._load_schema()
-
-    def update_schema(self, schema_dict):
-        self._schema_data = schema_dict
-        FileManager.write_json(self.schema_file_path, schema_dict)
+        return FileManager.read_json(self.schema_file_path)
 
     @property
     def input_base_topic(self):

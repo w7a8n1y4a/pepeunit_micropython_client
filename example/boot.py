@@ -1,11 +1,7 @@
 import network
 import time
 import gc
-
-try:
-    import ujson as json
-except Exception:
-    import json
+import ujson as json
 
 print('\n')
 
@@ -21,7 +17,7 @@ def _read_wifi_from_env(path):
 
 
 ssid, password = _read_wifi_from_env('/env.json')
-print('wifi', ssid, password)
+print('wifi:', ssid, password)
 
 sta = network.WLAN(network.STA_IF)
 
@@ -38,11 +34,11 @@ if not sta.isconnected():
 
 if sta.isconnected():
     try:
-        print('network config:', sta.ifconfig())
+        print('network:', sta.ifconfig())
     except Exception:
         pass
 
-print(gc.collect())
-print('free',  gc.mem_free())
-print('alloc',  gc.mem_alloc())
-print('end boot')
+gc.collect()
+
+print('free_mem:',  gc.mem_free(), 'alloc_mem:',  gc.mem_alloc())
+print('Boot Success')

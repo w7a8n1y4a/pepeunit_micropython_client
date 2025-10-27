@@ -1,5 +1,6 @@
 import ujson as json
 import os
+import gc
 
 try:
     import uzlib
@@ -12,16 +13,18 @@ class FileManager:
     def _dirname(path):
         idx = path.rfind('/')
         return path[:idx] if idx > 0 else ''
+
     @staticmethod
     def read_json(file_path):
         with open(file_path, 'r') as f:
             return json.load(f)
 
     @staticmethod
-    def write_json(file_path, data, indent=None):
+    def write_json(file_path, data):
         FileManager._ensure_dir(FileManager._dirname(file_path))
         with open(file_path, 'w') as f:
             json.dump(data, f)
+        gc.collect()
 
     @staticmethod
     def file_exists(file_path):
@@ -36,14 +39,14 @@ class FileManager:
         FileManager._ensure_dir(directory_path)
 
     @staticmethod
-    def copy_file(source_path, destination_path):
-        FileManager._ensure_dir(FileManager._dirname(destination_path))
-        with open(source_path, 'rb') as s, open(destination_path, 'wb') as d:
-            while True:
-                b = s.read(256)
-                if not b:
-                    break
-                d.write(b)
+    def copy_file(from_path, to_path):
+        with open(from_path, 'rb') as f, open(to_path, 'wb') as t:
+            CHUNK_SIZE = 256
+            data = f.read(CHUNK_SIZE)
+            while data:
+                t.write(data)
+                data = f.read(CHUNK_SIZE)
+        gc.collect()
 
     @staticmethod
     def copy_directory_contents(source_path, destination_path):
@@ -91,6 +94,7 @@ class FileManager:
                 if not chunk:
                     break
                 fout.write(chunk)
+        gc.collect()
         try:
             FileManager._extract_tar(tar_tmp, extract_path)
         finally:
@@ -127,7 +131,8 @@ class FileManager:
                     pad = (512 - (size % 512)) % 512
                     if pad:
                         f.read(pad)
-
+        gc.collect()
+        
     @staticmethod
     def _ensure_dir(path):
         if not path:

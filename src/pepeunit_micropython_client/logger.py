@@ -25,7 +25,7 @@ class Logger:
             'create_datetime': self._iso_now()
         }
         self._write_to_file(log_entry)
-        if self.mqtt_client and self.schema_manager:
+        if self.mqtt_client:
             self._send_mqtt(log_entry)
 
     def _write_to_file(self, log_entry):

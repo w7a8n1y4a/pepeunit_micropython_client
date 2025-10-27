@@ -2,10 +2,7 @@ from .settings import Settings
 from .schema_manager import SchemaManager
 from .logger import Logger
 
-try:
-    from umqtt.simple import MQTTClient
-except ImportError:
-    MQTTClient = None
+from umqtt.simple import MQTTClient
 
 
 class PepeunitMqttClient:
@@ -17,29 +14,19 @@ class PepeunitMqttClient:
         self._input_handler = None
 
     def _get_client(self):
-        if MQTTClient is None:
-            raise ImportError('umqtt.simple is required')
         cid = self.settings.PEPEUNIT_TOKEN[-12:] if self.settings.PEPEUNIT_TOKEN else 'pepeunit'
         c = MQTTClient(client_id=cid, server=self.settings.MQTT_URL, port=self.settings.MQTT_PORT, user=self.settings.PEPEUNIT_TOKEN, password='')
         c.set_callback(self._on_message)
         return c
 
     def connect(self):
-        if not self._client:
-            self._client = self._get_client()
-        try:
-            self._client.connect()
-            self.logger.info('Connected to MQTT Broker!')
-        except Exception as e:
-            self.logger.critical('Failed to connect to MQTT: ' + str(e))
-            raise
+        self._client = self._get_client()
+        self._client.connect()
+        self.logger.info('Connected to MQTT Broker!')
 
     def disconnect(self):
         if self._client:
-            try:
-                self._client.disconnect()
-            except Exception:
-                pass
+            self._client.disconnect()
 
     def set_input_handler(self, handler):
         self._input_handler = handler
@@ -47,17 +34,11 @@ class PepeunitMqttClient:
     def subscribe_topics(self, topics):
         if self._client:
             for topic in topics:
-                try:
-                    self._client.subscribe(topic)
-                except Exception as e:
-                    self.logger.error('Subscribe error: ' + str(e))
+                self._client.subscribe(topic)
 
     def publish(self, topic, message):
         if self._client:
-            try:
-                self._client.publish(topic, message)
-            except Exception as e:
-                self.logger.error('Publish error: ' + str(e))
+            self._client.publish(topic, message)
 
     def _on_message(self, topic, msg):
         class Msg:
@@ -65,15 +46,9 @@ class PepeunitMqttClient:
         m = Msg()
         m.topic = topic.decode('utf-8') if isinstance(topic, bytes) else topic
         m.payload = msg.decode('utf-8') if isinstance(msg, bytes) else msg
-        try:
-            if self._input_handler:
-                self._input_handler(m)
-        except Exception as e:
-            self.logger.error('Error processing MQTT message: ' + str(e))
+
+        if self._input_handler:
+            self._input_handler(m)
 
     def check_msg(self):
-        if self._client:
-            try:
-                self._client.check_msg()
-            except Exception:
-                pass
+        self._client.check_msg()
