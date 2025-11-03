@@ -49,7 +49,9 @@ class PepeunitRestClient:
         headers = self._get_auth_headers()
         self._download_file(url, headers, file_path)
         
-        FileManager.write_json(file_path, json.loads(FileManager.read_json(file_path)))
+        read_file = FileManager.read_json(file_path)
+        json_load = json.loads(read_file)
+        FileManager.write_json(file_path, json_load)
 
     def download_schema(self, unit_uuid, file_path):
         url = self._get_base_url() + '/units/get_current_schema/' + unit_uuid
@@ -57,7 +59,9 @@ class PepeunitRestClient:
 
         self._download_file(url, headers, file_path)
 
-        FileManager.write_json(file_path, json.loads(json.loads(FileManager.read_json(file_path))))
+        read_file = FileManager.read_json(file_path)
+        json_load = json.loads(read_file)
+        FileManager.write_json(file_path, json_load)
 
     def set_state_storage(self, unit_uuid, state):
         url = self._get_base_url() + '/unit/' + unit_uuid
