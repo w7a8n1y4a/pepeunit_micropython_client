@@ -34,7 +34,7 @@ set SRC /home/w7a8n1y4a/Documents/gitlab/pepe/pepeunit/libs/pepeunit_micropython
 set DST /home/w7a8n1y4a/Documents/gitlab/pepe/pepeunit/libs/pepeunit_micropython_client/example/lib/pepeunit_micropython_client
 
 for f in $SRC/*.py
-    set base (basename $f .py)
+    set base (basename $f .py) && echo $f
     micropython/mpy-cross/build/mpy-cross -O2 -o $DST/$base.mpy $f
 end
 ```

@@ -17,30 +17,23 @@ class Logger:
         return LogLevel.get_int_level(level_str) >= LogLevel.get_int_level(self.settings.MINIMAL_LOG_LEVEL)
 
     def _log(self, level_str, message):
+        print('log', level_str, message)
         if not self._should_log(level_str):
             return
+
         log_entry = {
             'level': level_str,
             'text': message,
-            'create_datetime': self._iso_now()
+            'create_datetime': str(int(time.time()))
         }
-        self._write_to_file(log_entry)
-        if self.mqtt_client:
-            self._send_mqtt(log_entry)
-
-    def _write_to_file(self, log_entry):
         FileManager.append_to_json_list(self.log_file_path, log_entry)
-
-    def _send_mqtt(self, log_entry):
-        try:
-            if BaseOutputTopicType.LOG_PEPEUNIT in self.schema_manager.output_base_topic:
-                topic = self.schema_manager.output_base_topic[BaseOutputTopicType.LOG_PEPEUNIT][0]
-                self.mqtt_client.publish(topic, json.dumps(log_entry))
-        except Exception:
-            pass
-
-    def _iso_now(self):
-        return str(int(time.time()))
+        if self.mqtt_client:
+            try:
+                if BaseOutputTopicType.LOG_PEPEUNIT in self.schema_manager.output_base_topic:
+                    topic = self.schema_manager.output_base_topic[BaseOutputTopicType.LOG_PEPEUNIT][0]
+                    self.mqtt_client.publish(topic, json.dumps(log_entry))
+            except Exception:
+                pass
 
     def debug(self, message):
         self._log(LogLevel.DEBUG, message)
