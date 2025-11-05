@@ -53,6 +53,8 @@ class PepeunitClient:
 
         self._running = False
         self._last_state_send = 0
+        self._in_mqtt_callback = False
+        self._resubscribe_requested = False
 
     def _get_default_mqtt_client(self):
         from .pepeunit_mqtt_client import PepeunitMqttClient
@@ -112,9 +114,13 @@ class PepeunitClient:
         self.mqtt_input_handler = handler
         if self.mqtt_client:    
             def combined_handler(msg):
-                self._base_mqtt_input_func(msg)
-                if self.mqtt_input_handler:
-                    self.mqtt_input_handler(self, msg)
+                self._in_mqtt_callback = True
+                try:
+                    self._base_mqtt_input_func(msg)
+                    if self.mqtt_input_handler:
+                        self.mqtt_input_handler(self, msg)
+                finally:
+                    self._in_mqtt_callback = False
             self.mqtt_client.set_input_handler(combined_handler)
 
     def _base_mqtt_input_func(self, msg):
@@ -178,7 +184,7 @@ class PepeunitClient:
         if self.enable_rest and self.rest_client:
             self.download_schema(self.schema_file_path)
             if self.enable_mqtt and self.mqtt_client:
-                self.subscribe_all_schema_topics()
+                self._resubscribe_requested = True
 
     def _handle_log_sync(self):
         if not self.mqtt_client or BaseOutputTopicType.LOG_PEPEUNIT not in self.schema.output_base_topic:
@@ -211,15 +217,22 @@ class PepeunitClient:
         except Exception as e:
             self.logger.error('Log sync failed: ' + str(e))
 
+    def _subscribe_all_schema_topics_now(self):
+        topics_set = set()
+        for topic_list in self.schema.input_base_topic.values():
+            topics_set.update(topic_list)
+        for topic_list in self.schema.input_topic.values():
+            topics_set.update(topic_list)
+        if topics_set:
+            self.mqtt_client.subscribe_topics(list(topics_set))
+
     def subscribe_all_schema_topics(self):
         if not self.enable_mqtt or not self.mqtt_client:
             raise RuntimeError('MQTT client is not enabled or available')
-        topics = []
-        for topic_list in self.schema.input_base_topic.values():
-            topics.extend(topic_list)
-        for topic_list in self.schema.input_topic.values():
-            topics.extend(topic_list)
-        self.mqtt_client.subscribe_topics(topics)
+        if self._in_mqtt_callback:
+            self._resubscribe_requested = True
+            return
+        self._subscribe_all_schema_topics_now()
 
     def publish_to_topics(self, topic_key, message):
         if self.enable_mqtt or self.mqtt_client:
@@ -247,6 +260,11 @@ class PepeunitClient:
             self.mqtt_output_handler = output_handler
         try:
             while self._running:
+                if self._resubscribe_requested and self.mqtt_client and not self._in_mqtt_callback:
+                    try:
+                        self._subscribe_all_schema_topics_now()
+                    finally:
+                        self._resubscribe_requested = False
                 if self.mqtt_client:
                     self.mqtt_client.check_msg()
                 self._base_mqtt_output_handler()
