@@ -35,9 +35,24 @@ class MQTTClient:
         self.lw_qos = 0
         self.lw_retain = False
 
+    def _write_all(self, data):
+        mv = memoryview(data)
+        total_len = len(mv)
+        sent_total = 0
+        while sent_total < total_len:
+            try:
+                sent = self.sock.send(mv[sent_total:])
+            except AttributeError:
+                sent = self.sock.write(mv[sent_total:])
+            if sent is None:
+                sent = 0
+            if sent <= 0:
+                raise OSError("Socket send/write returned 0 bytes; connection may be stalled")
+            sent_total += sent
+
     def _send_str(self, s):
-        self.sock.write(struct.pack("!H", len(s)))
-        self.sock.write(s)
+        self._write_all(struct.pack("!H", len(s)))
+        self._write_all(s)
 
     def _recv_len(self):
         n = 0
@@ -90,9 +105,8 @@ class MQTTClient:
             i += 1
         premsg[i] = sz
 
-        self.sock.write(premsg, i + 2)
-        self.sock.write(msg)
-        # print(hex(len(msg)), hexlify(msg, ":"))
+        self._write_all(premsg[: i + 2])
+        self._write_all(msg)
         self._send_str(self.client_id)
         if self.lw_topic:
             self._send_str(self.lw_topic)
@@ -107,11 +121,11 @@ class MQTTClient:
         return resp[2] & 1
 
     def disconnect(self):
-        self.sock.write(b"\xe0\0")
+        self._write_all(b"\xe0\0")
         self.sock.close()
 
     def ping(self):
-        self.sock.write(b"\xc0\0")
+        self._write_all(b"\xc0\0")
 
     def publish(self, topic, msg, retain=False, qos=0):
         pkt = bytearray(b"\x30\0\0\0")
@@ -126,15 +140,14 @@ class MQTTClient:
             sz >>= 7
             i += 1
         pkt[i] = sz
-        # print(hex(len(pkt)), hexlify(pkt, ":"))
-        self.sock.write(pkt, i + 1)
+        self._write_all(pkt[: i + 1])
         self._send_str(topic)
         if qos > 0:
             self.pid += 1
             pid = self.pid
             struct.pack_into("!H", pkt, 0, pid)
-            self.sock.write(pkt, 2)
-        self.sock.write(msg)
+            self._write_all(pkt[:2])
+        self._write_all(msg)
         if qos == 1:
             while 1:
                 op = self.wait_msg()
@@ -153,10 +166,9 @@ class MQTTClient:
         pkt = bytearray(b"\x82\0\0\0")
         self.pid += 1
         struct.pack_into("!BH", pkt, 1, 2 + 2 + len(topic) + 1, self.pid)
-        # print(hex(len(pkt)), hexlify(pkt, ":"))
-        self.sock.write(pkt)
+        self._write_all(pkt)
         self._send_str(topic)
-        self.sock.write(qos.to_bytes(1, "little"))
+        self._write_all(qos.to_bytes(1, "little"))
         while 1:
             op = self.wait_msg()
             if op == 0x90:
@@ -167,10 +179,6 @@ class MQTTClient:
                     raise MQTTException(resp[3])
                 return
 
-    # Wait for a single incoming MQTT message and process it.
-    # Subscribed messages are delivered to a callback previously
-    # set by .set_callback() method. Other (internal) MQTT
-    # messages processed internally.
     def wait_msg(self):
         res = self.sock.read(1)
         self.sock.setblocking(True)
@@ -199,14 +207,11 @@ class MQTTClient:
         if op & 6 == 2:
             pkt = bytearray(b"\x40\x02\0\0")
             struct.pack_into("!H", pkt, 2, pid)
-            self.sock.write(pkt)
+            self._write_all(pkt)
         elif op & 6 == 4:
             assert 0
         return op
 
-    # Checks whether a pending message from server is available.
-    # If not, returns immediately with None. Otherwise, does
-    # the same processing as wait_msg.
     def check_msg(self):
         self.sock.setblocking(False)
         return self.wait_msg()

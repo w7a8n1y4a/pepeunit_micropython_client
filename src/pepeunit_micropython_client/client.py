@@ -191,7 +191,7 @@ class PepeunitClient:
             return
         topic = self.schema.output_base_topic[BaseOutputTopicType.LOG_PEPEUNIT][0]
         try:
-            FileManager.trim_ndjson(self.logger.log_file_path, self.settings.LOG_LENGTH)
+            FileManager.trim_ndjson(self.logger.log_file_path, self.settings.MAX_LOG_LENGTH)
         except Exception:
             pass
 
@@ -203,6 +203,7 @@ class PepeunitClient:
                 return
             payload = b'[' + b','.join(batch) + b']'
             self.mqtt_client.publish(topic, payload)
+            time.sleep(3)
             
             batch.clear()
             gc.collect()

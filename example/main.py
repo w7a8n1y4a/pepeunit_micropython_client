@@ -2,9 +2,19 @@ import time
 import gc
 from pepeunit_micropython_client.client import PepeunitClient
 
+    
+last_output_send_time = 0
 
 def output_handler(client: PepeunitClient):
-    pass
+    global last_output_send_time
+    current_time = time.time()
+    
+    if current_time - last_output_send_time >= client.settings.DELAY_PUB_MSG:
+        message = str(time.ticks_ms())
+        
+        client.publish_to_topics("output/pepeunit", message)
+        
+        last_output_send_time = current_time
 
 
 def mqtt_input_handler(client: PepeunitClient, msg):

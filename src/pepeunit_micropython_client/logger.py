@@ -14,7 +14,7 @@ class Logger:
     def _should_log(self, level_str):
         if not self.settings:
             return True
-        return LogLevel.get_int_level(level_str) >= LogLevel.get_int_level(self.settings.MINIMAL_LOG_LEVEL)
+        return LogLevel.get_int_level(level_str) >= LogLevel.get_int_level(self.settings.MIN_LOG_LEVEL)
 
     def _log(self, level_str, message):
         print('log', level_str, message)
@@ -26,7 +26,7 @@ class Logger:
             'text': message,
             'create_datetime': str(int(time.time()))
         }
-        FileManager.append_ndjson_with_limit(self.log_file_path, log_entry, self.settings.LOG_LENGTH)
+        FileManager.append_ndjson_with_limit(self.log_file_path, log_entry, self.settings.MAX_LOG_LENGTH)
         if self.mqtt_client:
             try:
                 if BaseOutputTopicType.LOG_PEPEUNIT in self.schema_manager.output_base_topic:

@@ -18,8 +18,8 @@ class Settings:
     COMMIT_VERSION = ''
     PING_INTERVAL = 30
     STATE_SEND_INTERVAL = 300
-    MINIMAL_LOG_LEVEL = 'Debug'
-    LOG_LENGTH = 64
+    MIN_LOG_LEVEL = 'Debug'
+    MAX_LOG_LENGTH = 64
 
     def __init__(self, env_file_path=None, **kwargs):
         self.env_file_path = env_file_path
