@@ -26,7 +26,7 @@ class Logger:
             'text': message,
             'create_datetime': str(int(time.time()))
         }
-        FileManager.append_to_json_list(self.log_file_path, log_entry)
+        FileManager.append_ndjson_with_limit(self.log_file_path, log_entry, self.settings.LOG_LENGTH)
         if self.mqtt_client:
             try:
                 if BaseOutputTopicType.LOG_PEPEUNIT in self.schema_manager.output_base_topic:
@@ -50,10 +50,12 @@ class Logger:
     def critical(self, message):
         self._log(LogLevel.CRITICAL, message)
 
-    def get_full_log(self):
-        if not FileManager.file_exists(self.log_file_path):
-            return []
-        return FileManager.read_json(self.log_file_path)
-
     def reset_log(self):
-        FileManager.write_json(self.log_file_path, [])
+        with open(self.log_file_path, 'w') as f:
+            pass
+
+    def iter_log(self):
+        if not FileManager.file_exists(self.log_file_path):
+            return
+        for item in FileManager.iter_ndjson(self.log_file_path):
+            yield item

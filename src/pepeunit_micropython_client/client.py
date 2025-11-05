@@ -121,7 +121,7 @@ class PepeunitClient:
         try:
             for topic_key in self.schema.input_base_topic:
                 if msg.topic in self.schema.input_base_topic[topic_key]:
-                    self.logger.info(f'Input base topic: {msg.topic}')
+                    self.logger.info(f'Input base topic: {msg.payload}')
                     if topic_key == BaseInputTopicType.UPDATE_PEPEUNIT:
                         self._handle_update(msg)
                     elif topic_key == BaseInputTopicType.ENV_UPDATE_PEPEUNIT:
@@ -181,11 +181,35 @@ class PepeunitClient:
                 self.subscribe_all_schema_topics()
 
     def _handle_log_sync(self):
-        if BaseOutputTopicType.LOG_PEPEUNIT in self.schema.output_base_topic:
-            topic = self.schema.output_base_topic[BaseOutputTopicType.LOG_PEPEUNIT][0]
-            log_data = self.logger.get_full_log()
-            if self.mqtt_client:
-                self.mqtt_client.publish(topic, json.dumps(log_data))
+        if not self.mqtt_client or BaseOutputTopicType.LOG_PEPEUNIT not in self.schema.output_base_topic:
+            return
+        topic = self.schema.output_base_topic[BaseOutputTopicType.LOG_PEPEUNIT][0]
+        try:
+            FileManager.trim_ndjson(self.logger.log_file_path, self.settings.LOG_LENGTH)
+        except Exception:
+            pass
+
+        mem = gc.mem_free()
+        batch_size = 8 if mem >= 6000 else (4 if mem >= 3000 else 2)
+
+        def flush_batch_bytes(batch):
+            if not batch:
+                return
+            payload = b'[' + b','.join(batch) + b']'
+            self.mqtt_client.publish(topic, payload)
+            
+            batch.clear()
+            gc.collect()
+
+        batch = []
+        try:
+            for line in FileManager.iter_lines_bytes(self.logger.log_file_path):
+                batch.append(line)
+                if len(batch) >= batch_size:
+                    flush_batch_bytes(batch)
+            flush_batch_bytes(batch)
+        except Exception as e:
+            self.logger.error('Log sync failed: ' + str(e))
 
     def subscribe_all_schema_topics(self):
         if not self.enable_mqtt or not self.mqtt_client:

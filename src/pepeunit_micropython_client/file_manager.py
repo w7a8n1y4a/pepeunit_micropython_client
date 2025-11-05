@@ -78,6 +78,102 @@ class FileManager:
         FileManager.write_json(file_path, data)
 
     @staticmethod
+    def append_ndjson_with_limit(file_path, item, max_lines):
+        FileManager._ensure_dir(FileManager._dirname(file_path))
+        try:
+            if FileManager.file_exists(file_path):
+                with open(file_path, 'r') as f:
+                    ch = ''
+                    while True:
+                        c = f.read(1)
+                        if not c or not c.isspace():
+                            ch = c
+                            break
+                if ch == '[':
+                    data = FileManager.read_json(file_path)
+                    if isinstance(data, list):
+                        with open(file_path, 'w') as fw:
+                            for it in data:
+                                json.dump(it, fw)
+                                fw.write('\n')
+        except Exception:
+            pass
+        try:
+            with open(file_path, 'a') as f:
+                json.dump(item, f)
+                f.write('\n')
+        except Exception:
+            pass
+        gc.collect()
+        FileManager.trim_ndjson(file_path, max_lines)
+
+    @staticmethod
+    def iter_ndjson(file_path):
+        if not FileManager.file_exists(file_path):
+            return
+        with open(file_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    yield json.loads(line)
+                except Exception:
+                    continue
+
+    @staticmethod
+    def iter_lines_bytes(file_path):
+        if not FileManager.file_exists(file_path):
+            return
+        try:
+            with open(file_path, 'rb') as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        yield line
+        except Exception:
+            return
+
+    @staticmethod
+    def trim_ndjson(file_path, max_lines):
+        if not FileManager.file_exists(file_path) or max_lines <= 0:
+            return
+        try:
+            total = 0
+            with open(file_path, 'r') as f:
+                for _ in f:
+                    total += 1
+            if total <= max_lines:
+                return
+            to_skip = total - max_lines
+            tmp_path = file_path + '.tmp'
+            with open(file_path, 'r') as src, open(tmp_path, 'w') as dst:
+                for line in src:
+                    if to_skip > 0:
+                        to_skip -= 1
+                        continue
+                    dst.write(line)
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
+            try:
+                os.rename(tmp_path, file_path)
+            except OSError:
+                try:
+                    with open(tmp_path, 'r') as src, open(file_path, 'w') as dst:
+                        for line in src:
+                            dst.write(line)
+                finally:
+                    try:
+                        os.remove(tmp_path)
+                    except OSError:
+                        pass
+            gc.collect()
+        except Exception:
+            pass
+
+    @staticmethod
     def extract_tar_gz(archive_path, extract_path):
         FileManager.extract_pepeunit_archive(archive_path, extract_path)
 
