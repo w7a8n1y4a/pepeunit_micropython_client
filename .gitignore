@@ -1,5 +1,5 @@
 example/lib/pepeunit_micropython_client
 
-*.mpy
 env.json
 schema.json
+ESP8266_GENERIC-*
