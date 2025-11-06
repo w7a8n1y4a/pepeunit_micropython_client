@@ -1,5 +1,4 @@
 import time
-import gc
 from pepeunit_micropython_client.client import PepeunitClient
 
     
@@ -26,8 +25,6 @@ def main():
         env_file_path='/env.json',
         schema_file_path='/schema.json',
         log_file_path='/log.json',
-        enable_mqtt=True,
-        enable_rest=True,
         sta=sta
     )
     client.set_mqtt_input_handler(mqtt_input_handler)
@@ -41,7 +38,4 @@ if __name__ == '__main__':
     try:
         main()
     except Exception as e:
-        # On MicroPython, keep errors short to save RAM
         print('Error:', str(e))
-        time.sleep(3)
-

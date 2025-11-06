@@ -27,13 +27,9 @@ class Logger:
             'create_datetime': str(int(time.time()))
         }
         FileManager.append_ndjson_with_limit(self.log_file_path, log_entry, self.settings.MAX_LOG_LENGTH)
-        if self.mqtt_client:
-            try:
-                if BaseOutputTopicType.LOG_PEPEUNIT in self.schema_manager.output_base_topic:
-                    topic = self.schema_manager.output_base_topic[BaseOutputTopicType.LOG_PEPEUNIT][0]
-                    self.mqtt_client.publish(topic, json.dumps(log_entry))
-            except Exception:
-                pass
+        if self.mqtt_client and BaseOutputTopicType.LOG_PEPEUNIT in self.schema_manager.output_base_topic:
+            topic = self.schema_manager.output_base_topic[BaseOutputTopicType.LOG_PEPEUNIT][0]
+            self.mqtt_client.publish(topic, json.dumps(log_entry))
 
     def debug(self, message):
         self._log(LogLevel.DEBUG, message)

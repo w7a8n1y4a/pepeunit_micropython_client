@@ -1,5 +1,6 @@
 import gc
 import ujson as json
+import mrequests
 
 from .file_manager import FileManager
 
@@ -25,10 +26,9 @@ class PepeunitRestClient:
         )
 
     def _download_file(self, url, headers, file_path):
-        from mrequests import get as m_get
         gc.collect()
 
-        r = m_get(url=url, headers=headers)
+        r = mrequests.get(url=url, headers=headers)
 
         if r.status_code == 200:
             r.save(file_path, buf=bytearray(256))
@@ -72,8 +72,7 @@ class PepeunitRestClient:
         except Exception:
             body = '{}'
 
-        from mrequests import put as m_put
-        r = m_put(url, headers=headers, data=body)
+        r = mrequests.put(url, headers=headers, data=body)
         if r.status_code >= 400:
             raise OSError('HTTP error ' + str(r.status_code))
         r.close()
@@ -82,8 +81,7 @@ class PepeunitRestClient:
         url = self._get_base_url() + '/unit/' + unit_uuid
         headers = self._get_auth_headers()
 
-        from mrequests import get as m_get
-        r = m_get(url, headers=headers)
+        r = mrequests.get(url, headers=headers)
         if r.status_code >= 400:
             raise OSError('HTTP error ' + str(r.status_code))
         data = r.json()

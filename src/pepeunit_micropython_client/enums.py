@@ -17,17 +17,6 @@ class LogLevel:
         return mapping.get(level_str, 0)
 
 
-class SearchTopicType:
-    UNIT_NODE_UUID = 'unit_node_uuid'
-    FULL_NAME = 'full_name'
-
-
-class SearchScope:
-    ALL = 'all'
-    INPUT = 'input'
-    OUTPUT = 'output'
-
-
 class DestinationTopicType:
     INPUT_BASE_TOPIC = 'input_base_topic'
     OUTPUT_BASE_TOPIC = 'output_base_topic'
@@ -50,5 +39,4 @@ class BaseOutputTopicType:
 class RestartMode:
     RESTART_POPEN = 'restart_popen'
     RESTART_EXEC = 'restart_exec'
-    ENV_SCHEMA_ONLY = 'env_schema_only'
     NO_RESTART = 'no_restart'
