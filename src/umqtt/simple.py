@@ -158,7 +158,6 @@ class MQTTClient:
             op = self.wait_msg()
             if op == 0x90:
                 resp = self.sock.read(4)
-                # print(resp)
                 assert resp[1] == pkt[2] and resp[2] == pkt[3]
                 if resp[3] == 0x80:
                     raise MQTTException(resp[3])

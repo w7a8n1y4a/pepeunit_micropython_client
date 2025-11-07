@@ -37,6 +37,5 @@ class BaseOutputTopicType:
 
 
 class RestartMode:
-    RESTART_POPEN = 'restart_popen'
     RESTART_EXEC = 'restart_exec'
     NO_RESTART = 'no_restart'

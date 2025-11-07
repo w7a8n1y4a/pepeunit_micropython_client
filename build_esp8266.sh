@@ -1,15 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Rebuild ESP8266 firmware (ESP8266_GENERIC) on MicroPython v1.26.1
-# Freezes all modules from src/ and outputs
-#   ESP8266_GENERIC-20250911-v1.26.1.bin
-
 ROOT_DIR=$(cd "$(dirname "$0")" && pwd)
 MPY_DIR="$ROOT_DIR/micropython"
 BOARD="ESP8266_GENERIC"
 TAG="v1.26.1"
-OUTPUT_NAME="${OUTPUT_NAME:-ESP8266_GENERIC-20250911-v1.26.1.bin}"
+OUTPUT_NAME="${OUTPUT_NAME:-ESP8266_GENERIC-v1.26.1-PEPEUNIT-v0.10.0.bin}"
 
 echo "==> Using MicroPython tag: $TAG"
 git -C "$MPY_DIR" fetch --tags --quiet || true

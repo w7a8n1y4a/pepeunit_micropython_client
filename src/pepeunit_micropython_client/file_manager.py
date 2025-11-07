@@ -1,12 +1,12 @@
 import ujson as json
 import os
 import gc
-import shutil
+from shutil import shutil as shutil
 
 
 class FileManager:
     @staticmethod
-    def _dirname(path):
+    def dirname(path):
         idx = path.rfind('/')
         return path[:idx] if idx > 0 else ''
 
@@ -36,7 +36,7 @@ class FileManager:
 
     @staticmethod
     def write_json(file_path, data):
-        FileManager._ensure_dir(FileManager._dirname(file_path))
+        FileManager._ensure_dir(FileManager.dirname(file_path))
         with open(file_path, 'w') as f:
             json.dump(data, f)
         gc.collect()
@@ -51,7 +51,7 @@ class FileManager:
 
     @staticmethod
     def append_ndjson_with_limit(file_path, item, max_lines):
-        FileManager._ensure_dir(FileManager._dirname(file_path))
+        FileManager._ensure_dir(FileManager.dirname(file_path))
         try:
             with open(file_path, 'r') as f:
                 ch = ''
@@ -137,3 +137,25 @@ class FileManager:
             gc.collect()
         except Exception:
             pass
+
+    @staticmethod
+    def extract_tar_gz(tgz_path, dest_root):
+        import tarfile
+        import deflate
+
+        FileManager._ensure_dir(dest_root)
+
+        with open(tgz_path, 'rb') as tgz:
+            tar_file = deflate.DeflateIO(tgz, deflate.AUTO, 9)
+            unpack_tar = tarfile.TarFile(fileobj=tar_file)
+            for unpack_file in unpack_tar:
+                if unpack_file.type == tarfile.DIRTYPE or '@PaxHeader' in unpack_file.name:
+                    continue
+                
+                out_path = dest_root + '/' + unpack_file.name[2:]
+                FileManager._ensure_dir(FileManager.dirname(out_path))
+                subf = unpack_tar.extractfile(unpack_file)
+
+                with open(out_path, 'wb') as outf:
+                    shutil.copyfileobj(subf, outf)
+                    outf.close()

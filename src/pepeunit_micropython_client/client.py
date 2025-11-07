@@ -122,14 +122,24 @@ class PepeunitClient:
         if self.custom_update_handler:
             self.custom_update_handler(self, payload)
         else:
-            self.perform_update()
+            if self.settings.COMMIT_VERSION == payload.get('NEW_COMMIT_VERSION'):
+                self.logger.info('No update needed')
+                return
+            if self.restart_mode == RestartMode.RESTART_EXEC:
+                self.mqtt_client.disconnect()
+
+                self.perform_update()
+
+            if self.restart_mode != RestartMode.NO_RESTART:
+                self.restart_device()
 
     def perform_update(self):
-        tmp = '/update_' + self.unit_uuid + '.tar.gz'
+        tmp = '/update_' + self.unit_uuid + '.tgz'
         self.rest_client.download_update(self.unit_uuid, tmp)
         
-        unit_directory = self._dirname(self.env_file_path) or '/'
+        unit_directory = FileManager.dirname(self.env_file_path)
         FileManager.extract_tar_gz(tmp, unit_directory)
+        gc.collect()
 
         try:
             os.remove(tmp)
@@ -227,6 +237,18 @@ class PepeunitClient:
     def stop_main_cycle(self):
         self._running = False
 
-    def _dirname(self, path):
-        i = path.rfind('/')
-        return path[:i] if i > 0 else '/'
+    def restart_device(self):
+        try:
+            text = "I'll be back"
+            print(text)
+            self.logger.info(text)
+        except Exception:
+            pass
+        try:
+            time.sleep(1)
+        except Exception:
+            pass
+        try:
+            machine.reset()
+        except Exception:
+            pass
