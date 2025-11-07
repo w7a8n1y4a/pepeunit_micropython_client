@@ -17,7 +17,7 @@ def output_handler(client: PepeunitClient):
 
 
 def mqtt_input_handler(client: PepeunitClient, msg):
-    print(msg)
+    print('user input message', msg.payload)
 
 
 def main():

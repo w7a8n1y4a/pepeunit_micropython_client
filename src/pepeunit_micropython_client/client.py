@@ -1,5 +1,4 @@
 import ujson as json
-import ubinascii as binascii
 import time
 import gc
 import machine
@@ -23,6 +22,7 @@ class PepeunitClient:
         log_file_path,
         cycle_speed=0.1,
         restart_mode=RestartMode.RESTART_EXEC,
+        skip_version_check=False,
         sta=None
     ):
         self.env_file_path = env_file_path
@@ -30,6 +30,7 @@ class PepeunitClient:
         self.log_file_path = log_file_path
         self.cycle_speed = cycle_speed
         self.restart_mode = restart_mode
+        self.skip_version_check = skip_version_check
         self.sta = sta
 
         self.settings = Settings(env_file_path)
@@ -47,11 +48,6 @@ class PepeunitClient:
         self._last_state_send = 0
         self._in_mqtt_callback = False
         self._resubscribe_requested = False
-
-    @property
-    def unit_uuid(self):
-        data = self.settings.PEPEUNIT_TOKEN.split('.')[1].encode()
-        return json.loads(binascii.a2b_base64(data + (len(data) % 4) * b'=').decode('utf-8'))['uuid']
 
     def get_system_state(self):
         gc.collect()
@@ -101,19 +97,19 @@ class PepeunitClient:
             self.logger.error('Error in base MQTT input handler: ' + str(e))
 
     def download_env(self, file_path):
-        self.rest_client.download_env(self.unit_uuid, file_path)
+        self.rest_client.download_env(file_path)
         self.settings.load_from_file()
 
     def download_schema(self, file_path):
-        self.rest_client.download_schema(self.unit_uuid, file_path)
+        self.rest_client.download_schema(file_path)
         self.schema.update_from_file()
         self._resubscribe_requested = True
 
     def set_state_storage(self, state):
-        self.rest_client.set_state_storage(self.unit_uuid, state)
+        self.rest_client.set_state_storage(state)
 
     def get_state_storage(self):
-        return self.rest_client.get_state_storage(self.unit_uuid)
+        return self.rest_client.get_state_storage()
 
     def _handle_update(self, msg):
         gc.collect()
@@ -122,7 +118,7 @@ class PepeunitClient:
         if self.custom_update_handler:
             self.custom_update_handler(self, payload)
         else:
-            if self.settings.COMMIT_VERSION == payload.get('NEW_COMMIT_VERSION'):
+            if not self.skip_version_check and self.settings.COMMIT_VERSION == payload.get('NEW_COMMIT_VERSION'):
                 self.logger.info('No update needed')
                 return
             if self.restart_mode == RestartMode.RESTART_EXEC:
@@ -134,8 +130,8 @@ class PepeunitClient:
                 self.restart_device()
 
     def perform_update(self):
-        tmp = '/update_' + self.unit_uuid + '.tgz'
-        self.rest_client.download_update(self.unit_uuid, tmp)
+        tmp = '/update_' + self.settings.unit_uuid + '.tgz'
+        self.rest_client.download_update(tmp)
         
         unit_directory = FileManager.dirname(self.env_file_path)
         FileManager.extract_tar_gz(tmp, unit_directory)

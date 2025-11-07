@@ -15,8 +15,7 @@ class PepeunitMqttClient:
         self._input_handler = None
 
     def _get_client(self):
-        cid = self.settings.PEPEUNIT_TOKEN[-12:] if self.settings.PEPEUNIT_TOKEN else 'pepeunit'
-        c = MQTTClient(client_id=cid, server=self.settings.MQTT_URL, port=self.settings.MQTT_PORT, user=self.settings.PEPEUNIT_TOKEN, password='')
+        c = MQTTClient(client_id=self.settings.unit_uuid, server=self.settings.MQTT_URL, port=self.settings.MQTT_PORT, user=self.settings.PEPEUNIT_TOKEN, password='')
         c.set_callback(self._on_message)
         return c
 
