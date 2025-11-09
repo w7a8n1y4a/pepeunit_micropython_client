@@ -1,3 +1,5 @@
+import gc
+
 from .file_manager import FileManager
 from .enums import SearchTopicType, SearchScope, DestinationTopicType
 
@@ -8,7 +10,10 @@ class SchemaManager:
         self._schema_data = self.update_from_file()
 
     def update_from_file(self):
-        return FileManager.read_json(self.schema_file_path)
+        self._schema_data = FileManager.read_json(self.schema_file_path)
+        gc.collect()
+
+        return self._schema_data
 
     @property
     def input_base_topic(self):

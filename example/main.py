@@ -1,4 +1,5 @@
 import time
+import gc
 from pepeunit_micropython_client.client import PepeunitClient
 from pepeunit_micropython_client.enums import SearchTopicType, SearchScope
     
@@ -10,6 +11,7 @@ def output_handler(client: PepeunitClient):
     
     if current_time - last_output_send_time >= client.settings.DELAY_PUB_MSG:
         message = str(time.ticks_ms())
+        print('free mem:', gc.mem_free())
         
         client.logger.info(f"Send to output/pepeunit: {message}")
         
@@ -31,7 +33,15 @@ def input_handler(client: PepeunitClient, msg):
                 try:
                     value = int(value)
 
-                    client.logger.info(f"Get input message {value}")
+                    if value < 10000:
+                        client.rest_client.set_state_storage('This line is saved in Pepeunit Instance')
+                        client.logger.info(f"Success set state")
+                    
+                    if value > 10000 and value < 20000:
+                        state = client.rest_client.get_state_storage()
+                        client.logger.info(f"Success get state: {state}")
+
+                    client.logger.info(f"Get from input/pepeunit: {value}")
 
                 except ValueError:
                     client.logger.error(f"Value is not a number: {value}")

@@ -40,9 +40,8 @@ class Settings:
     def load_from_file(self):
         if not self.env_file_path or not FileManager.file_exists(self.env_file_path):
             return
-        with open(self.env_file_path, 'r') as f:
-            data = json.load(f)
-
+        data = FileManager.read_json(self.env_file_path)
         gc.collect()
+
         for k, v in data.items():
             setattr(self, k, v)

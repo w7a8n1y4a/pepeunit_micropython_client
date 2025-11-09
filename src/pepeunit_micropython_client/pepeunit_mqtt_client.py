@@ -1,7 +1,6 @@
 from .settings import Settings
 from .schema_manager import SchemaManager
 from .logger import Logger
-import gc
 
 from umqtt.simple import MQTTClient
 
@@ -38,7 +37,6 @@ class PepeunitMqttClient:
 
     def publish(self, topic, message):
         if self._client:
-            print('publish', topic, type(message), len(message), gc.mem_free())
             self._client.publish(topic, message)
 
     def _on_message(self, topic, msg):
