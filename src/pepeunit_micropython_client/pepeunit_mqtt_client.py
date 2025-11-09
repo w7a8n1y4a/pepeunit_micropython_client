@@ -21,11 +21,12 @@ class PepeunitMqttClient:
     def connect(self):
         self._client = self._get_client()
         self._client.connect()
-        self.logger.info('Connected to MQTT Broker!')
+        self.logger.info('Connected to MQTT Broker')
 
     def disconnect(self):
         if self._client:
             self._client.disconnect()
+            self.logger.info('Disconnected from MQTT Broker', file_only=True)
 
     def set_input_handler(self, handler):
         self._input_handler = handler
@@ -34,6 +35,7 @@ class PepeunitMqttClient:
         if self._client:
             for topic in topics:
                 self._client.subscribe(topic)
+            self.logger.info(f'Success subscribed to {len(topics)} topics')
 
     def publish(self, topic, message):
         if self._client:

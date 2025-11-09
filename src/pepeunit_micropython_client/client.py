@@ -83,7 +83,8 @@ class PepeunitClient:
         try:
             for topic_key in self.schema.input_base_topic:
                 if msg.topic in self.schema.input_base_topic[topic_key]:
-                    self.logger.info(f'Input base topic: {msg.payload}')
+                    self.logger.info(f'Get base MQTT command {topic_key}: {msg.payload}')
+
                     if topic_key == BaseInputTopicType.ENV_UPDATE_PEPEUNIT:
                         self.download_env(self.env_file_path)
                     elif topic_key == BaseInputTopicType.SCHEMA_UPDATE_PEPEUNIT:
@@ -94,7 +95,7 @@ class PepeunitClient:
                         self._handle_log_sync()
                     break
         except Exception as e:
-            self.logger.error('Error in base MQTT input handler: ' + str(e))
+            self.logger.error('Error in base MQTT command: ' + str(e))
 
     def download_env(self, file_path):
         self.rest_client.download_env(file_path)
@@ -119,7 +120,7 @@ class PepeunitClient:
             self.custom_update_handler(self, payload)
         else:
             if not self.skip_version_check and self.settings.COMMIT_VERSION == payload.get('NEW_COMMIT_VERSION'):
-                self.logger.info('No update needed')
+                self.logger.info('No update needed target version = current version')
                 return
             if self.restart_mode == RestartMode.RESTART_EXEC:
                 self.mqtt_client.disconnect()
@@ -132,9 +133,12 @@ class PepeunitClient:
     def perform_update(self):
         tmp = '/update_' + self.settings.unit_uuid + '.tgz'
         self.rest_client.download_update(tmp)
+        self.logger.info('Success download update archive', file_only=True)
         
         unit_directory = FileManager.dirname(self.env_file_path)
         FileManager.extract_tar_gz(tmp, unit_directory)
+        self.logger.info('Success extract archive', file_only=True)
+
         gc.collect()
 
         try:
@@ -178,6 +182,9 @@ class PepeunitClient:
             topics_set.update(topic_list)
         for topic_list in self.schema.input_topic.values():
             topics_set.update(topic_list)
+
+        self.logger.info(f'Need a subscription for {len(topics_set)} topics')
+
         if topics_set:
             self.mqtt_client.subscribe_topics(list(topics_set))
 
@@ -237,7 +244,7 @@ class PepeunitClient:
         try:
             text = "I'll be back"
             print(text)
-            self.logger.info(text)
+            self.logger.info(f'Restart planned: {text}', file_only=True)
         except Exception:
             pass
         try:

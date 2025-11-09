@@ -16,8 +16,7 @@ class Logger:
             return True
         return LogLevel.get_int_level(level_str) >= LogLevel.get_int_level(self.settings.MIN_LOG_LEVEL)
 
-    def _log(self, level_str, message):
-        print('log', level_str, message)
+    def _log(self, level_str, message, file_only=False):
         if not self._should_log(level_str):
             return
 
@@ -27,24 +26,27 @@ class Logger:
             'create_datetime': str(int(time.time()))
         }
         FileManager.append_ndjson_with_limit(self.log_file_path, log_entry, self.settings.MAX_LOG_LENGTH)
-        if self.mqtt_client and BaseOutputTopicType.LOG_PEPEUNIT in self.schema_manager.output_base_topic:
+        if not file_only and self.mqtt_client and BaseOutputTopicType.LOG_PEPEUNIT in self.schema_manager.output_base_topic:
             topic = self.schema_manager.output_base_topic[BaseOutputTopicType.LOG_PEPEUNIT][0]
-            self.mqtt_client.publish(topic, json.dumps(log_entry))
+            try:
+                self.mqtt_client.publish(topic, json.dumps(log_entry))
+            except Exception:
+                pass
+            
+    def debug(self, message, file_only=False):
+        self._log(LogLevel.DEBUG, message, file_only)
 
-    def debug(self, message):
-        self._log(LogLevel.DEBUG, message)
+    def info(self, message, file_only=False):
+        self._log(LogLevel.INFO, message, file_only)
 
-    def info(self, message):
-        self._log(LogLevel.INFO, message)
+    def warning(self, message, file_only=False):
+        self._log(LogLevel.WARNING, message, file_only)
 
-    def warning(self, message):
-        self._log(LogLevel.WARNING, message)
+    def error(self, message, file_only=False):
+        self._log(LogLevel.ERROR, message, file_only)
 
-    def error(self, message):
-        self._log(LogLevel.ERROR, message)
-
-    def critical(self, message):
-        self._log(LogLevel.CRITICAL, message)
+    def critical(self, message, file_only=False):
+        self._log(LogLevel.CRITICAL, message, file_only)
 
     def reset_log(self):
         with open(self.log_file_path, 'w') as f:
