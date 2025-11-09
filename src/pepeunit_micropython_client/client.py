@@ -83,7 +83,7 @@ class PepeunitClient:
         try:
             for topic_key in self.schema.input_base_topic:
                 if msg.topic in self.schema.input_base_topic[topic_key]:
-                    self.logger.info(f'Get base MQTT command {topic_key}: {msg.payload}')
+                    self.logger.info(f'Get base MQTT command: {topic_key}')
 
                     if topic_key == BaseInputTopicType.ENV_UPDATE_PEPEUNIT:
                         self.download_env(self.env_file_path)
@@ -100,11 +100,13 @@ class PepeunitClient:
     def download_env(self, file_path):
         self.rest_client.download_env(file_path)
         self.settings.load_from_file()
+        self.logger.info('Success update env')
 
     def download_schema(self, file_path):
         self.rest_client.download_schema(file_path)
         self.schema.update_from_file()
         self._resubscribe_requested = True
+        self.logger.info('Success update schema')
 
     def set_state_storage(self, state):
         self.rest_client.set_state_storage(state)
@@ -120,7 +122,7 @@ class PepeunitClient:
             self.custom_update_handler(self, payload)
         else:
             if not self.skip_version_check and self.settings.COMMIT_VERSION == payload.get('NEW_COMMIT_VERSION'):
-                self.logger.info('No update needed target version = current version')
+                self.logger.info('No update needed: current version = target version')
                 return
             if self.restart_mode == RestartMode.RESTART_EXEC:
                 self.mqtt_client.disconnect()

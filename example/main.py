@@ -13,7 +13,7 @@ def output_handler(client: PepeunitClient):
         message = str(time.ticks_ms())
         print('free mem:', gc.mem_free())
         
-        client.logger.info(f"Send to output/pepeunit: {message}")
+        client.logger.debug(f"Send to output/pepeunit: {message}", file_only=True)
         
         client.publish_to_topics("output/pepeunit", message)
         
@@ -41,7 +41,7 @@ def input_handler(client: PepeunitClient, msg):
                         state = client.rest_client.get_state_storage()
                         client.logger.info(f"Success get state: {state}")
 
-                    client.logger.info(f"Get from input/pepeunit: {value}")
+                    client.logger.debug(f"Get from input/pepeunit: {value}", file_only=True)
 
                 except ValueError:
                     client.logger.error(f"Value is not a number: {value}")

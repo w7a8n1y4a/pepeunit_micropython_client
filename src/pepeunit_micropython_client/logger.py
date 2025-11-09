@@ -1,5 +1,7 @@
 import ujson as json
 import time
+import gc
+
 from .enums import LogLevel, BaseOutputTopicType
 from .file_manager import FileManager
 
@@ -23,7 +25,8 @@ class Logger:
         log_entry = {
             'level': level_str,
             'text': message,
-            'create_datetime': str(int(time.time()))
+            'current_millis': time.ticks_ms(),
+            'free_mem': gc.mem_free()
         }
         FileManager.append_ndjson_with_limit(self.log_file_path, log_entry, self.settings.MAX_LOG_LENGTH)
         if not file_only and self.mqtt_client and BaseOutputTopicType.LOG_PEPEUNIT in self.schema_manager.output_base_topic:
@@ -32,7 +35,7 @@ class Logger:
                 self.mqtt_client.publish(topic, json.dumps(log_entry))
             except Exception:
                 pass
-            
+
     def debug(self, message, file_only=False):
         self._log(LogLevel.DEBUG, message, file_only)
 
