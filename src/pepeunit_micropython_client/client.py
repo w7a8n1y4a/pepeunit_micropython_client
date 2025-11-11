@@ -4,11 +4,12 @@ import gc
 import machine
 import os
 
+from .time_manager import TimeManager
 from .settings import Settings
 from .file_manager import FileManager
 from .logger import Logger
-
 from .schema_manager import SchemaManager
+
 from .pepeunit_mqtt_client import PepeunitMqttClient
 from .pepeunit_rest_client import PepeunitRestClient
 from .enums import BaseInputTopicType, BaseOutputTopicType, RestartMode
@@ -23,6 +24,7 @@ class PepeunitClient:
         cycle_speed=0.1,
         restart_mode=RestartMode.RESTART_EXEC,
         skip_version_check=False,
+        ntp_host='pool.ntp.org',
         sta=None
     ):
         self.env_file_path = env_file_path
@@ -33,9 +35,10 @@ class PepeunitClient:
         self.skip_version_check = skip_version_check
         self.sta = sta
 
+        self.time_manager = TimeManager(ntp_host=ntp_host)
         self.settings = Settings(env_file_path)
         self.schema = SchemaManager(schema_file_path)
-        self.logger = Logger(log_file_path, None, self.schema, self.settings)
+        self.logger = Logger(log_file_path, None, self.schema, self.settings, self.time_manager)
         self.mqtt_client = PepeunitMqttClient(self.settings, self.schema, self.logger)
         self.logger.mqtt_client = self.mqtt_client
         self.rest_client = PepeunitRestClient(self.settings)
@@ -52,7 +55,7 @@ class PepeunitClient:
     def get_system_state(self):
         gc.collect()
         state = {
-            'millis': time.ticks_ms(),
+            'millis': self.time_manager.get_epoch_ms(),
             'mem_free': gc.mem_free(),
             'mem_alloc': gc.mem_alloc(),
             'freq': machine.freq(),
@@ -163,7 +166,6 @@ class PepeunitClient:
                 return
             payload = b'[' + b','.join(batch) + b']'
             self.mqtt_client.publish(topic, payload)
-            time.sleep(3)
             
             batch.clear()
             gc.collect()
@@ -206,9 +208,9 @@ class PepeunitClient:
             self.mqtt_client.publish(topic, message)
 
     def _base_mqtt_output_handler(self):
-        current_time = time.time()
+        current_time = self.time_manager.get_epoch_ms()
         if BaseOutputTopicType.STATE_PEPEUNIT in self.schema.output_base_topic:
-            if current_time - self._last_state_send >= self.settings.STATE_SEND_INTERVAL:
+            if (current_time - self._last_state_send) / 1000 >= self.settings.STATE_SEND_INTERVAL:
                 topic = self.schema.output_base_topic[BaseOutputTopicType.STATE_PEPEUNIT][0]
                 state_data = self.get_system_state()
                 self.mqtt_client.publish(topic, json.dumps(state_data))
@@ -240,6 +242,7 @@ class PepeunitClient:
         self.custom_update_handler = custom_update_handler
 
     def stop_main_cycle(self):
+        self.logger.info(f'Main cycle stopped', file_only=True)
         self._running = False
 
     def restart_device(self):

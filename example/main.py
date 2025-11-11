@@ -7,9 +7,9 @@ last_output_send_time = 0
 
 def output_handler(client: PepeunitClient):
     global last_output_send_time
-    current_time = time.time()
+    current_time = client.time_manager.get_epoch_ms()
     
-    if current_time - last_output_send_time >= client.settings.DELAY_PUB_MSG:
+    if (current_time - last_output_send_time) / 1000 >= client.settings.DELAY_PUB_MSG:
         message = str(time.ticks_ms())
         print('free mem:', gc.mem_free())
         

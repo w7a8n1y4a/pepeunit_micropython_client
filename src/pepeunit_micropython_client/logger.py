@@ -4,14 +4,16 @@ import gc
 
 from .enums import LogLevel, BaseOutputTopicType
 from .file_manager import FileManager
+from .time_manager import TimeManager
 
 
 class Logger:
-    def __init__(self, log_file_path, mqtt_client=None, schema_manager=None, settings=None):
+    def __init__(self, log_file_path, mqtt_client=None, schema_manager=None, settings=None, time_manager=None):
         self.log_file_path = log_file_path
         self.mqtt_client = mqtt_client
         self.schema_manager = schema_manager
         self.settings = settings
+        self.time_manager = time_manager
 
     def _should_log(self, level_str):
         if not self.settings:
@@ -25,7 +27,7 @@ class Logger:
         log_entry = {
             'level': level_str,
             'text': message,
-            'current_millis': time.ticks_ms(),
+            'create_datetime': self.time_manager.get_epoch_ms(),
             'free_mem': gc.mem_free()
         }
         FileManager.append_ndjson_with_limit(self.log_file_path, log_entry, self.settings.MAX_LOG_LENGTH)
