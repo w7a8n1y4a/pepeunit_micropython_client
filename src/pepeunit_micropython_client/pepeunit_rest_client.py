@@ -84,3 +84,61 @@ class PepeunitRestClient:
         r.close()
         return data
 
+    def get_input_by_output(self, topic, limit=10, offset=0):
+        uuid = topic.split('/')[1]
+
+        base_url = self._get_base_url() + '/unit_nodes'
+        headers = self._get_auth_headers()
+
+        params = [
+            ('order_by_create_date', 'desc'),
+            ('output_uuid', uuid),
+            ('limit', str(limit)),
+            ('offset', str(offset)),
+        ]
+        query = '&'.join(['{}={}'.format(k, v) for (k, v) in params])
+        url = base_url + '?' + query
+
+        gc.collect()
+        r = mrequests.get(url=url, headers=headers)
+        if r.status_code >= 400:
+            raise OSError('HTTP error ' + str(r.status_code))
+        
+        data = json.loads(r.text)
+        
+        r.close()
+        gc.collect()
+        return data
+
+    def get_units_by_nodes(self, unit_node_uuids, limit=10, offset=0):
+        if not unit_node_uuids:
+            return {'count': 0, 'units': []}
+
+        base_url = self._get_base_url() + '/units'
+        headers = self._get_auth_headers()
+
+        params = [
+            ('is_include_output_unit_nodes', 'true'),
+            ('order_by_unit_name', 'asc'),
+            ('order_by_create_date', 'desc'),
+            ('order_by_last_update', 'desc'),
+            ('limit', str(limit)),
+            ('offset', str(offset)),
+        ]
+        for uuid in unit_node_uuids:
+            params.append(('unit_node_uuids', uuid))
+
+        query = '&'.join(['{}={}'.format(k, v) for (k, v) in params])
+        url = base_url + '?' + query
+
+        gc.collect()
+        r = mrequests.get(url=url, headers=headers)
+        if r.status_code >= 400:
+            raise OSError('HTTP error ' + str(r.status_code))
+
+        data = json.loads(r.text)
+        
+        r.close()
+        gc.collect()
+        return data
+
