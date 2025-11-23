@@ -3,3 +3,4 @@ example/lib/pepeunit_micropython_client
 env.json
 schema.json
 ESP8266_GENERIC-*
+ESP32_GENERIC-*
