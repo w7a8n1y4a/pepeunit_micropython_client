@@ -7,20 +7,19 @@ from .file_manager import FileManager
 
 class Settings:
 
-    PEPEUNIT_URL = ''
-    PEPEUNIT_APP_PREFIX = ''
-    PEPEUNIT_API_ACTUAL_PREFIX = ''
-    HTTP_TYPE = 'https'
-    MQTT_URL = ''
-    MQTT_PORT = 1883
-    PEPEUNIT_TOKEN = ''
-    SYNC_ENCRYPT_KEY = ''
-    SECRET_KEY = ''
-    COMMIT_VERSION = ''
-    PING_INTERVAL = 30
-    STATE_SEND_INTERVAL = 300
-    MIN_LOG_LEVEL = 'Debug'
-    MAX_LOG_LENGTH = 64
+    PU_DOMAIN = ''
+    PU_HTTP_TYPE = 'https'
+    PU_APP_PREFIX = ''
+    PU_API_ACTUAL_PREFIX = ''
+    PU_MQTT_HOST = ''
+    PU_MQTT_PORT = 1883
+    PU_MQTT_PING_INTERVAL = 30
+    PU_AUTH_TOKEN = ''
+    PU_SECRET_KEY = ''
+    PU_STATE_SEND_INTERVAL = 300
+    PU_MIN_LOG_LEVEL = 'Debug'
+    PU_MAX_LOG_LENGTH = 64
+    PU_COMMIT_VERSION = ''
 
     def __init__(self, env_file_path=None, **kwargs):
         self.env_file_path = env_file_path
@@ -31,7 +30,7 @@ class Settings:
 
     @property
     def unit_uuid(self):
-        data = self.PEPEUNIT_TOKEN.split('.')[1].encode()
+        data = self.PU_AUTH_TOKEN.split('.')[1].encode()
         gc.collect()
         uuid = json.loads(binascii.a2b_base64(data + (len(data) % 4) * b'=').decode('utf-8'))['uuid']
         gc.collect()

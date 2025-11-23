@@ -18,7 +18,7 @@ class Logger:
     def _should_log(self, level_str):
         if not self.settings:
             return True
-        return LogLevel.get_int_level(level_str) >= LogLevel.get_int_level(self.settings.MIN_LOG_LEVEL)
+        return LogLevel.get_int_level(level_str) >= LogLevel.get_int_level(self.settings.PU_MIN_LOG_LEVEL)
 
     def _log(self, level_str, message, file_only=False):
         if not self._should_log(level_str):
@@ -30,7 +30,7 @@ class Logger:
             'create_datetime': self.time_manager.get_epoch_ms(),
             'free_mem': gc.mem_free()
         }
-        FileManager.append_ndjson_with_limit(self.log_file_path, log_entry, self.settings.MAX_LOG_LENGTH)
+        FileManager.append_ndjson_with_limit(self.log_file_path, log_entry, self.settings.PU_MAX_LOG_LENGTH)
         if not file_only and self.mqtt_client and BaseOutputTopicType.LOG_PEPEUNIT in self.schema_manager.output_base_topic:
             topic = self.schema_manager.output_base_topic[BaseOutputTopicType.LOG_PEPEUNIT][0]
             try:

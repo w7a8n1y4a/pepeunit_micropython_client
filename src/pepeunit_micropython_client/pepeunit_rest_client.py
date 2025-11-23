@@ -12,17 +12,17 @@ class PepeunitRestClient:
     def _get_auth_headers(self):
         return {
             'accept': 'application/json',
-            'x-auth-token': self.settings.PEPEUNIT_TOKEN,
+            'x-auth-token': self.settings.PU_AUTH_TOKEN,
         }
 
     def _get_base_url(self):
         gc.collect()
         return (
-            self.settings.HTTP_TYPE
+            self.settings.PU_HTTP_TYPE
             + '://'
-            + self.settings.PEPEUNIT_URL
-            + self.settings.PEPEUNIT_APP_PREFIX
-            + self.settings.PEPEUNIT_API_ACTUAL_PREFIX
+            + self.settings.PU_DOMAIN
+            + self.settings.PU_APP_PREFIX
+            + self.settings.PU_API_ACTUAL_PREFIX
         )
 
     def _download_file(self, url, headers, file_path):

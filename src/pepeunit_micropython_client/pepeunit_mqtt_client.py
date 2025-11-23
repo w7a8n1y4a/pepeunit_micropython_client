@@ -14,7 +14,7 @@ class PepeunitMqttClient:
         self._input_handler = None
 
     def _get_client(self):
-        c = MQTTClient(client_id=self.settings.unit_uuid, server=self.settings.MQTT_URL, port=self.settings.MQTT_PORT, user=self.settings.PEPEUNIT_TOKEN, password='')
+        c = MQTTClient(client_id=self.settings.unit_uuid, server=self.settings.PU_MQTT_HOST, port=self.settings.PU_MQTT_PORT, user=self.settings.PU_AUTH_TOKEN, password='')
         c.set_callback(self._on_message)
         return c
 

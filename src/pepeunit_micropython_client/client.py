@@ -60,7 +60,7 @@ class PepeunitClient:
             'mem_alloc': gc.mem_alloc(),
             'freq': machine.freq(),
             'statvfs': os.statvfs('/'),
-            'commit_version': self.settings.COMMIT_VERSION
+            'pu_commit_version': self.settings.PU_COMMIT_VERSION
         }
 
         try:
@@ -124,7 +124,7 @@ class PepeunitClient:
         if self.custom_update_handler:
             self.custom_update_handler(self, payload)
         else:
-            if not self.skip_version_check and self.settings.COMMIT_VERSION == payload.get('NEW_COMMIT_VERSION'):
+            if not self.skip_version_check and self.settings.PU_COMMIT_VERSION == payload.get('PU_COMMIT_VERSION'):
                 self.logger.info('No update needed: current version = target version')
                 return
             if self.restart_mode == RestartMode.RESTART_EXEC:
@@ -153,7 +153,7 @@ class PepeunitClient:
 
     def _handle_log_sync(self):
         try:
-            FileManager.trim_ndjson(self.logger.log_file_path, self.settings.MAX_LOG_LENGTH)
+            FileManager.trim_ndjson(self.logger.log_file_path, self.settings.PU_MAX_LOG_LENGTH)
         except Exception:
             pass
 
@@ -210,7 +210,7 @@ class PepeunitClient:
     def _base_mqtt_output_handler(self):
         current_time = self.time_manager.get_epoch_ms()
         if BaseOutputTopicType.STATE_PEPEUNIT in self.schema.output_base_topic:
-            if (current_time - self._last_state_send) / 1000 >= self.settings.STATE_SEND_INTERVAL:
+            if (current_time - self._last_state_send) / 1000 >= self.settings.PU_STATE_SEND_INTERVAL:
                 topic = self.schema.output_base_topic[BaseOutputTopicType.STATE_PEPEUNIT][0]
                 state_data = self.get_system_state()
                 self.mqtt_client.publish(topic, json.dumps(state_data))
