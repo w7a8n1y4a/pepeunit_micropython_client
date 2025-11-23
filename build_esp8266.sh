@@ -6,6 +6,9 @@ MPY_DIR="$ROOT_DIR/micropython"
 BOARD="ESP8266_GENERIC"
 TAG="v1.26.1"
 OUTPUT_NAME="${OUTPUT_NAME:-ESP8266_GENERIC-v1.26.1-PEPEUNIT-v0.10.0.bin}"
+DEFAULT_MANIFEST="$ROOT_DIR/manifests/esp8266_manifest_2MiB.py"
+# Allow override via env; otherwise use our project manifest
+FROZEN_MANIFEST="${FROZEN_MANIFEST:-$DEFAULT_MANIFEST}"
 
 echo "==> Using MicroPython tag: $TAG"
 git -C "$MPY_DIR" fetch --tags --quiet || true
@@ -63,7 +66,8 @@ make -C "$ESP8266_DIR" clean-modules || true
 make -C "$ESP8266_DIR" clean || true
 
 echo "==> Building firmware"
-make -C "$ESP8266_DIR" BOARD="$BOARD" ESPTOOL="$ESPTOOL_BIN" -j"$(nproc)"
+echo "==> Using manifest: $FROZEN_MANIFEST"
+make -C "$ESP8266_DIR" BOARD="$BOARD" ESPTOOL="$ESPTOOL_BIN" FROZEN_MANIFEST="$FROZEN_MANIFEST" -j"$(nproc)"
 
 SRC_BIN="$ESP8266_DIR/build-$BOARD/firmware.bin"
 DST_BIN="$ROOT_DIR/$OUTPUT_NAME"

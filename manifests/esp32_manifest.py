@@ -6,6 +6,12 @@ include("$(MPY_DIR)/extmod/asyncio")
 
 # Minimal required micropython-lib deps (do not require umqtt.simple; our src provides it)
 require("upysh")
+# NTP time sync for TimeManager
+require("ntptime")
+# 1-Wire support
+require("onewire")
+# DS18x20 temperature sensors
+require("ds18x20")
 # Optional: display driver, remove if not needed
 require("ssd1306")
 
