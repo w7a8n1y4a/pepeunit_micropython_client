@@ -9,7 +9,7 @@ A cross-platform Python library for integrating with the PepeUnit IoT platform. 
 ## Installation
 1. Download the latest version for your Micropython board with the Pepeunit library - [Releases](https://git.pepemoss.com/pepe/pepeunit/libs/pepeunit_micropython_client/-/releases)
 1. Write the interpreter to your board: [esp8266 example](https://micropython.org/download/ESP8266_GENERIC/), [esp32 example](https://micropython.org/download/ESP32_GENERIC/)
-1. Write your code to the board, for example using the command: `ampy -p /dev/ttyUSB0 -b 115200 put ./example .`
+1. Write your code to the board, for example using the command: `ampy -p /dev/ttyUSB0 -b 115200 put ./example/ .`
 
 
 ## Usage Example
@@ -30,12 +30,14 @@ It shows how to:
 - Run the main application cycle
 - Storage api
 - Units Nodes api
+- Cipher api
 """
 
 import time
 import gc
 from pepeunit_micropython_client.client import PepeunitClient
 from pepeunit_micropython_client.enums import SearchTopicType, SearchScope
+from pepeunit_micropython_client.cipher import AesGcmCipher
     
 last_output_send_time = 0
 
@@ -107,6 +109,17 @@ def test_get_units(client: PepeunitClient):
     except Exception as e:
         client.logger.error("Test get units failed: {}".format(e))
 
+def test_cipher(client: PepeunitClient):
+    try:
+        aes_cipher = AesGcmCipher()
+        text = "pepeunit cipher test"
+        enc = aes_cipher.aes_gcm_encode(text, client.settings.PU_ENCRYPT_KEY)
+        client.logger.info(f"Cipher data {enc}")
+        dec = aes_cipher.aes_gcm_decode(enc, client.settings.PU_ENCRYPT_KEY)
+        client.logger.info(f"Decoded data: {dec}")
+    except Exception as e:
+        client.logger.error("Cipher test error: {}".format(e))
+
 
 def main():
     client = PepeunitClient(
@@ -118,6 +131,7 @@ def main():
 
     test_set_get_storage(client)
     test_get_units(client)
+    test_cipher(client)
     
     client.set_mqtt_input_handler(input_handler)
     client.mqtt_client.connect()
@@ -227,6 +241,15 @@ Method | Description
 --- | ---
 `set_epoch_base_ms(epoch_ms)` | Sets the base epoch time in milliseconds.
 `get_epoch_ms()` | Returns the current time in milliseconds; when base is set, computed via ticks.
+
+### AesGcmCipher
+
+The key can be 16, 24, or 32 bits long.
+
+Method | Description
+--- | ---
+`aes_gcm_encode(data: str, key: str) -> str` | Encrypts text and returns `base64(nonce).base64(cipher||tag)`.
+`aes_gcm_decode(data: str, key: str) -> str` | Decrypts encoded string back to plaintext.
 
 ### Enum
 
