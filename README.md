@@ -248,7 +248,7 @@ The key can be 16, 24, or 32 bits long.
 
 Method | Description
 --- | ---
-`aes_gcm_encode(data: str, key: str) -> str` | Encrypts text and returns `base64(nonce).base64(cipher||tag)`.
+`aes_gcm_encode(data: str, key: str) -> str` | Encrypts text and returns `base64(nonce).base64(cipher)`.
 `aes_gcm_decode(data: str, key: str) -> str` | Decrypts encoded string back to plaintext.
 
 ### Enum
