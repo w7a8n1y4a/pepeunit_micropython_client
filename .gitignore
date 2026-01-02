@@ -4,3 +4,5 @@ env.json
 schema.json
 ESP8266_GENERIC-*
 ESP32_GENERIC-*
+
+__pycache__

@@ -17,6 +17,7 @@ class MQTTClient:
         password=None,
         keepalive=0,
         ssl=None,
+        socket_timeout=5,
     ):
         if port == 0:
             port = 8883 if ssl else 1883
@@ -34,6 +35,15 @@ class MQTTClient:
         self.lw_msg = None
         self.lw_qos = 0
         self.lw_retain = False
+        self.socket_timeout = socket_timeout
+
+    def _set_sock_timeout(self):
+        if self.socket_timeout is None:
+            return
+        try:
+            self.sock.settimeout(self.socket_timeout)
+        except Exception:
+            pass
 
     def _send_str(self, s):
         self.sock.write(struct.pack("!H", len(s)))
@@ -62,10 +72,12 @@ class MQTTClient:
 
     def connect(self, clean_session=True):
         self.sock = socket.socket()
+        self._set_sock_timeout()
         addr = socket.getaddrinfo(self.server, self.port)[0][-1]
         self.sock.connect(addr)
         if self.ssl:
             self.sock = self.ssl.wrap_socket(self.sock, server_hostname=self.server)
+            self._set_sock_timeout()
         premsg = bytearray(b"\x10\0\0\0\0\0")
         msg = bytearray(b"\x04MQTT\x04\x02\0\0")
 
@@ -106,8 +118,10 @@ class MQTTClient:
         return resp[2] & 1
 
     def disconnect(self):
-        self.sock.write(b"\xe0\0")
-        self.sock.close()
+        try:
+            self.sock.write(b"\xe0\0")
+        finally:
+            self.sock.close()
 
     def ping(self):
         self.sock.write(b"\xc0\0")
@@ -165,7 +179,10 @@ class MQTTClient:
 
     def wait_msg(self):
         res = self.sock.read(1)
-        self.sock.setblocking(True)
+        if self.socket_timeout is None:
+            self.sock.setblocking(True)
+        else:
+            self._set_sock_timeout()
         if res is None:
             return None
         if res == b"":
