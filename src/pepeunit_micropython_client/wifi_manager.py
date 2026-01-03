@@ -157,5 +157,5 @@ class WifiManager:
         base = 5000
         interval = base * (2 ** (attempt - 1))
         if interval > self.settings.PUC_MAX_RECONNECTION_INTERVAL:
-            return self.settings.PUC_max_reconnection_interval
+            return self.settings.PUC_MAX_RECONNECTION_INTERVAL
         return int(interval)
