@@ -2,7 +2,7 @@ import gc
 
 from pepeunit_micropython_client.client import PepeunitClient
 
-print('\n')
+print('\nRun init PepeunitClient')
 
 client = PepeunitClient(
     env_file_path='/env.json',

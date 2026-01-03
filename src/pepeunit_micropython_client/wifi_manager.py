@@ -24,6 +24,7 @@ class WifiManager:
 
     def get_sta(self):
         if self._sta is None:
+            self.logger.warning("WiFi station run create", file_only=True)
             sta = network.WLAN(network.STA_IF)
             if not sta.active():
                 sta.active(True)
@@ -47,6 +48,7 @@ class WifiManager:
         return ""
 
     def _force_sta_reset(self):
+        self.logger.info("WiFi station prepare", file_only=True)
         sta = self.get_sta()
         try:
             sta.disconnect()
@@ -69,7 +71,7 @@ class WifiManager:
 
     def scan_has_target_ssid(self):
         sta = self.get_sta()
-        self.logger.warning("WiFi run scan ssid`s", file_only=True)
+        self.logger.info("WiFi run scan existing ssid`s", file_only=True)
         scan = sta.scan()
         for ap in scan:
             ap_ssid = ap[0]

@@ -18,7 +18,6 @@ It shows how to:
 
 import time
 import gc
-import machine
 
 from pepeunit_micropython_client.client import PepeunitClient
 from pepeunit_micropython_client.enums import SearchTopicType, SearchScope
