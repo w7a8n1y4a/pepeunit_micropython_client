@@ -25,7 +25,8 @@ class PepeunitClient:
         restart_mode=RestartMode.RESTART_EXEC,
         skip_version_check=False,
         ntp_host='pool.ntp.org',
-        sta=None
+        ff_wifi_manager_enable=False,
+        sta=None,
     ):
         self.env_file_path = env_file_path
         self.schema_file_path = schema_file_path
@@ -42,6 +43,12 @@ class PepeunitClient:
         self.mqtt_client = PepeunitMqttClient(self.settings, self.schema, self.logger)
         self.logger.mqtt_client = self.mqtt_client
         self.rest_client = PepeunitRestClient(self.settings)
+
+        if ff_wifi_manager_enable:
+            from .wifi_manager import WifiManager
+            self.wifi_manager = WifiManager(settings=self.settings, logger=self.logger)
+        else:
+            self.wifi_manager = None
 
         self.mqtt_input_handler = None
         self.mqtt_output_handler = None
@@ -64,7 +71,10 @@ class PepeunitClient:
         }
 
         try:
-            state['ifconfig'] = self.sta.ifconfig()
+            if self.wifi_manager:
+                state['ifconfig'] = self.wifi_manager.get_sta().ifconfig()
+            else:
+                state['ifconfig'] = self.sta.ifconfig()
         except Exception:
             pass
 

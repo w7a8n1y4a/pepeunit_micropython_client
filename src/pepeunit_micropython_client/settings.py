@@ -21,6 +21,9 @@ class Settings:
     PU_MIN_LOG_LEVEL = 'Debug'
     PU_MAX_LOG_LENGTH = 64
     PU_COMMIT_VERSION = ''
+    PUC_WIFI_SSID = ''
+    PUC_WIFI_PASS = ''
+    PUC_MAX_RECONNECTION_INTERVAL = 60000
 
     def __init__(self, env_file_path=None, **kwargs):
         self.env_file_path = env_file_path

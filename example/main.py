@@ -18,6 +18,8 @@ It shows how to:
 
 import time
 import gc
+import machine
+
 from pepeunit_micropython_client.client import PepeunitClient
 from pepeunit_micropython_client.enums import SearchTopicType, SearchScope
 from pepeunit_micropython_client.cipher import AesGcmCipher
@@ -104,14 +106,7 @@ def test_cipher(client: PepeunitClient):
         client.logger.error("Cipher test error: {}".format(e))
 
 
-def main():
-    client = PepeunitClient(
-        env_file_path='/env.json',
-        schema_file_path='/schema.json',
-        log_file_path='/log.json',
-        sta=sta
-    )
-
+def main(client: PepeunitClient):
     test_set_get_storage(client)
     test_get_units(client)
     test_cipher(client)
@@ -125,6 +120,10 @@ def main():
 
 if __name__ == '__main__':
     try:
-        main()
+        main(client)
+    except KeyboardInterrupt:
+        raise
     except Exception as e:
-        print('Error:', str(e))
+        client.logger.critical(f"Error with reset: {str(e)}", file_only=True)
+        client.logger.info("I'll be back", file_only=True)
+        machine.reset()
