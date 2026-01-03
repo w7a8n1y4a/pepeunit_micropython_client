@@ -1,19 +1,18 @@
 import ujson as json
-import time
 import gc
 
 from .enums import LogLevel, BaseOutputTopicType
 from .file_manager import FileManager
-from .time_manager import TimeManager
 
 
 class Logger:
-    def __init__(self, log_file_path, mqtt_client=None, schema_manager=None, settings=None, time_manager=None):
+    def __init__(self, log_file_path, mqtt_client=None, schema_manager=None, settings=None, time_manager=None, ff_console_log_enable=True):
         self.log_file_path = log_file_path
         self.mqtt_client = mqtt_client
         self.schema_manager = schema_manager
         self.settings = settings
         self.time_manager = time_manager
+        self.ff_console_log_enable = ff_console_log_enable
 
     def _should_log(self, level_str):
         if not self.settings:
@@ -30,6 +29,10 @@ class Logger:
             'create_datetime': self.time_manager.get_epoch_ms(),
             'free_mem': gc.mem_free()
         }
+
+        if self.ff_console_log_enable:
+            print(log_entry)
+
         FileManager.append_ndjson_with_limit(self.log_file_path, log_entry, self.settings.PU_MAX_LOG_LENGTH)
         if not file_only and self.mqtt_client and BaseOutputTopicType.LOG_PEPEUNIT in self.schema_manager.output_base_topic:
             topic = self.schema_manager.output_base_topic[BaseOutputTopicType.LOG_PEPEUNIT][0]

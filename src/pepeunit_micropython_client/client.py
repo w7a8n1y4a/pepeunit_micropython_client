@@ -23,23 +23,31 @@ class PepeunitClient:
         log_file_path,
         cycle_speed=0.1,
         restart_mode=RestartMode.RESTART_EXEC,
-        skip_version_check=False,
         ntp_host='pool.ntp.org',
-        ff_wifi_manager_enable=False,
         sta=None,
+        ff_version_check_enable=True,
+        ff_wifi_manager_enable=False,
+        ff_console_log_enable=True,
     ):
         self.env_file_path = env_file_path
         self.schema_file_path = schema_file_path
         self.log_file_path = log_file_path
         self.cycle_speed = cycle_speed
         self.restart_mode = restart_mode
-        self.skip_version_check = skip_version_check
+        self.ff_version_check_enable = ff_version_check_enable
         self.sta = sta
 
         self.time_manager = TimeManager(ntp_host=ntp_host)
         self.settings = Settings(env_file_path)
         self.schema = SchemaManager(schema_file_path)
-        self.logger = Logger(log_file_path, None, self.schema, self.settings, self.time_manager)
+        self.logger = Logger(
+                log_file_path,
+                None,
+                self.schema,
+                self.settings,
+                self.time_manager,
+                ff_console_log_enable
+            )
         self.mqtt_client = PepeunitMqttClient(self.settings, self.schema, self.logger)
         self.logger.mqtt_client = self.mqtt_client
         self.rest_client = PepeunitRestClient(self.settings)
@@ -134,7 +142,7 @@ class PepeunitClient:
         if self.custom_update_handler:
             self.custom_update_handler(self, payload)
         else:
-            if not self.skip_version_check and self.settings.PU_COMMIT_VERSION == payload.get('PU_COMMIT_VERSION'):
+            if self.ff_version_check_enable and self.settings.PU_COMMIT_VERSION == payload.get('PU_COMMIT_VERSION'):
                 self.logger.info('No update needed: current version = target version')
                 return
             if self.restart_mode == RestartMode.RESTART_EXEC:
