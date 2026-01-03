@@ -265,9 +265,7 @@ class PepeunitClient:
 
     def restart_device(self):
         try:
-            text = "I'll be back"
-            print(text)
-            self.logger.info(f'Restart planned: {text}', file_only=True)
+            self.logger.warning("Restart: I`ll be back", file_only=True)
         except Exception:
             pass
         try:

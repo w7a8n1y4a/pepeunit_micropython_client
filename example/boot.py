@@ -16,4 +16,4 @@ client.wifi_manager.connect_forever()
 
 gc.collect()
 
-client.logger.info(f'Init Success: free_mem {gc.mem_free()}: alloc_mem {gc.mem_alloc()}', file_only=True)
+client.logger.warning(f'Init Success: free_mem {gc.mem_free()}: alloc_mem {gc.mem_alloc()}', file_only=True)

@@ -125,5 +125,4 @@ if __name__ == '__main__':
         raise
     except Exception as e:
         client.logger.critical(f"Error with reset: {str(e)}", file_only=True)
-        client.logger.info("I'll be back", file_only=True)
-        machine.reset()
+        client.restart_device()

@@ -69,6 +69,7 @@ class WifiManager:
 
     def scan_has_target_ssid(self):
         sta = self.get_sta()
+        self.logger.warning("WiFi run scan ssid`s", file_only=True)
         scan = sta.scan()
         for ap in scan:
             ap_ssid = ap[0]
@@ -84,8 +85,8 @@ class WifiManager:
             connected_ssid = self.get_connected_ssid()
             if self.settings.PUC_WIFI_SSID and connected_ssid == self.settings.PUC_WIFI_SSID:
                 return True
-            self.logger.info(
-                'wifi connected to "{}" but target ssid is "{}" - forcing reconnect'.format(
+            self.logger.warning(
+                'WiFi connected to "{}" but target ssid is "{}" - forcing reconnect'.format(
                     connected_ssid, self.settings.PUC_WIFI_SSID
                 ),
                 file_only=True
@@ -93,6 +94,8 @@ class WifiManager:
             self._force_sta_reset()
 
         self._force_sta_reset()
+
+        self.logger.warning("Attempting connect to WiFi", file_only=True)
         sta.connect(str(self.settings.PUC_WIFI_SSID), str(self.settings.PUC_WIFI_PASS))
 
         started = time.ticks_ms()
@@ -109,8 +112,8 @@ class WifiManager:
             if self.is_connected():
                 connected_ssid = self.get_connected_ssid()
                 if self.settings.PUC_WIFI_SSID and connected_ssid and connected_ssid != self.settings.PUC_WIFI_SSID:
-                    self.logger.info(
-                        'wifi unexpected cached connection to "{}"; need "{}" - disconnecting'.format(
+                    self.logger.warning(
+                        'WiFi unexpected cached connection to "{}"; need "{}" - disconnecting'.format(
                             connected_ssid, self.settings.PUC_WIFI_SSID
                         ),
                         file_only=True
@@ -119,9 +122,9 @@ class WifiManager:
                     attempt += 1
                     continue
                 try:
-                    self.logger.info("wifi connected: " + str(self.get_sta().ifconfig()), file_only=True)
+                    self.logger.warning("WiFi connected: " + str(self.get_sta().ifconfig()), file_only=True)
                 except Exception:
-                    self.logger.info("wifi connected", file_only=True)
+                    self.logger.warning("WiFi connected", file_only=True)
                 return True
 
             wait_ms = self._reconnection_interval_ms(attempt)
@@ -131,11 +134,11 @@ class WifiManager:
                     ok = self.connect_once(timeout_ms=connect_timeout_ms)
                     if ok:
                         continue
-                    self.logger.info("wifi connect timeout, next try in {} ms".format(wait_ms), file_only=True)
+                    self.logger.warning("WiFi connect timeout, next try in {} ms".format(wait_ms), file_only=True)
                 else:
-                    self.logger.info('wifi ssid "{}" not found, next scan in {} ms'.format(self.settings.PUC_WIFI_SSID, wait_ms), file_only=True)
+                    self.logger.warning('WiFi ssid "{}" not found, next scan in {} ms'.format(self.settings.PUC_WIFI_SSID, wait_ms), file_only=True)
             except Exception as e:
-                self.logger.info("wifi error: {}, next try in {} ms".format(str(e), wait_ms), file_only=True)
+                self.logger.error("WiFi error: {}, next try in {} ms".format(str(e), wait_ms), file_only=True)
 
             if wait_ms > 0:
                 time.sleep_ms(wait_ms)
