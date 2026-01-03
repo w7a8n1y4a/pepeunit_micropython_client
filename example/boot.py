@@ -14,6 +14,8 @@ client = PepeunitClient(
 
 client.wifi_manager.connect_forever()
 
+client.time_manager.sync_epoch_ms_from_ntp()
+
 gc.collect()
 
 client.logger.warning(f'Init Success: free_mem {gc.mem_free()}: alloc_mem {gc.mem_alloc()}', file_only=True)
