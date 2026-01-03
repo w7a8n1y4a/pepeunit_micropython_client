@@ -9,7 +9,7 @@ class TimeManager:
         self._epoch_base_ms = None
         self._ticks_base_ms = None
 
-        self._sync_epoch_ms_from_ntp()
+        self.sync_epoch_ms_from_ntp()
 
     def set_epoch_base_ms(self, epoch_ms):
         try:
@@ -19,7 +19,7 @@ class TimeManager:
             self._epoch_base_ms = None
             self._ticks_base_ms = None
 
-    def _sync_epoch_ms_from_ntp(self):
+    def sync_epoch_ms_from_ntp(self):
         try:
             try:
                 ntptime.host = self.ntp_host
