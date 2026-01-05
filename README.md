@@ -14,6 +14,7 @@ A cross-platform Python library for integrating with the PepeUnit IoT platform. 
 
 ## Usage Example
 
+- `main.py`
 ```python
 """
 Basic PepeUnit Client Example
@@ -35,6 +36,7 @@ It shows how to:
 
 import time
 import gc
+
 from pepeunit_micropython_client.client import PepeunitClient
 from pepeunit_micropython_client.enums import SearchTopicType, SearchScope
 from pepeunit_micropython_client.cipher import AesGcmCipher
@@ -121,14 +123,7 @@ def test_cipher(client: PepeunitClient):
         client.logger.error("Cipher test error: {}".format(e))
 
 
-def main():
-    client = PepeunitClient(
-        env_file_path='/env.json',
-        schema_file_path='/schema.json',
-        log_file_path='/log.json',
-        sta=sta
-    )
-
+def main(client: PepeunitClient):
     test_set_get_storage(client)
     test_get_units(client)
     test_cipher(client)
@@ -142,9 +137,39 @@ def main():
 
 if __name__ == '__main__':
     try:
-        main()
+        main(client)
+    except KeyboardInterrupt:
+        raise
     except Exception as e:
-        print('Error:', str(e))
+        client.logger.critical(f"Error with reset: {str(e)}", file_only=True)
+        client.restart_device()
+
+```
+
+- `boot.py`
+
+```python
+import gc
+
+from pepeunit_micropython_client.client import PepeunitClient
+
+print('\nRun init PepeunitClient')
+
+client = PepeunitClient(
+    env_file_path='/env.json',
+    schema_file_path='/schema.json',
+    log_file_path='/log.json',
+    cycle_speed=0.001,
+    ff_wifi_manager_enable=True,
+)
+
+client.wifi_manager.connect_forever()
+
+client.time_manager.sync_epoch_ms_from_ntp()
+
+gc.collect()
+
+client.logger.warning(f'Init Success: free_mem {gc.mem_free()}: alloc_mem {gc.mem_alloc()}', file_only=True)
 
 ```
 
@@ -239,8 +264,21 @@ Method | Description
 
 Method | Description
 --- | ---
+`sync_epoch_ms_from_ntp()` | Sync epoch ms from ntp server
 `set_epoch_base_ms(epoch_ms)` | Sets the base epoch time in milliseconds.
 `get_epoch_ms()` | Returns the current time in milliseconds; when base is set, computed via ticks.
+
+### WifiManager
+Method | Description
+--- | ---
+`get_sta()` | Returns (and lazily creates) the `network.WLAN(network.STA_IF)` station interface.
+`is_connected()` | Returns `True` if station is connected.
+`get_connected_ssid()` | Returns SSID of the current connection (or empty string if unknown).
+`scan_has_target_ssid()` | Scans for APs and returns `True` if target SSID `PUC_WIFI_SSID` is present.
+`connect_once(timeout_ms=10000)` | Tries to connect to `PUC_WIFI_SSID`/`PUC_WIFI_PASS` once; returns `True` on success, `False` on timeout.
+`connect_forever(connect_timeout_ms=10000)` | Reconnect loop with backoff (capped by `PUC_MAX_RECONNECTION_INTERVAL`) until connected to target SSID.
+`ensure_connected()` | Ensures WiFi is connected; if not, calls `connect_forever()`.
+
 
 ### AesGcmCipher
 
