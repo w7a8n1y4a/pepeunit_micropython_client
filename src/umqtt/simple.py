@@ -213,10 +213,4 @@ class MQTTClient:
 
     def check_msg(self):
         self.sock.setblocking(False)
-        try:
-            return self.wait_msg()
-        except OSError as e:
-            code = e.args[0] if e.args else None
-            if code in (-1,):
-                return None
-            raise
+        return self.wait_msg()
