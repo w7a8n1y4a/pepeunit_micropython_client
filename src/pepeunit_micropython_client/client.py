@@ -200,16 +200,7 @@ class PepeunitClient:
             pass
 
     def _subscribe_all_schema_topics_now(self):
-        topics_set = set()
-        for topic_list in self.schema.input_base_topic.values():
-            topics_set.update(topic_list)
-        for topic_list in self.schema.input_topic.values():
-            topics_set.update(topic_list)
-
-        self.logger.info(f'Need a subscription for {len(topics_set)} topics')
-
-        if topics_set:
-            self.mqtt_client.subscribe_topics(list(topics_set))
+        self.mqtt_client.subscribe_all_schema_topics()
 
     def subscribe_all_schema_topics(self):
         if self._in_mqtt_callback:

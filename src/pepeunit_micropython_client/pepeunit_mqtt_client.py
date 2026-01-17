@@ -2,7 +2,7 @@ from .settings import Settings
 from .schema_manager import SchemaManager
 from .logger import Logger
 
-from umqtt.simple import MQTTClient
+from umqtt.simple import MQTTClient, MQTTException
 
 
 class PepeunitMqttClient:
@@ -32,25 +32,55 @@ class PepeunitMqttClient:
         self.logger.info('Connected to MQTT Broker')
 
     def disconnect(self):
-        if self._client:
-            self._client.disconnect()
-            self.logger.info('Disconnected from MQTT Broker', file_only=True)
+        if not self._client:
+            return
+        self._client.disconnect()
+        self._client = None
+        self.logger.info('Disconnected from MQTT Broker', file_only=True)
+
+    def _reconnect(self):
+        self.disconnect()
+        self.connect()
+        self.subscribe_all_schema_topics()
+        self.logger.info('Reconnected to MQTT Broker')
 
     def set_input_handler(self, handler):
         self._input_handler = handler
 
+    def _get_all_schema_topics(self):
+        topics_set = set()
+        for topic_list in self.schema_manager.input_base_topic.values():
+            topics_set.update(topic_list)
+        for topic_list in self.schema_manager.input_topic.values():
+            topics_set.update(topic_list)
+        return list(topics_set)
+
+    def subscribe_all_schema_topics(self):
+        topics = self._get_all_schema_topics()
+        self.logger.info('Need a subscription for {} topics'.format(len(topics)))
+        if topics:
+            self.subscribe_topics(topics)
+
     def subscribe_topics(self, topics):
-        if self._client:
+        topics = topics or []
+        try:
             for topic in topics:
                 self._client.subscribe(topic)
-            self.logger.info(f'Success subscribed to {len(topics)} topics')
+            self.logger.info('Success subscribed to {} topics'.format(len(topics)))
+        except MQTTException as e:
+            self._reconnect()
 
     def publish(self, topic, message):
-        if self._client:
+        try:
             self._client.publish(topic, message)
+        except MQTTException as e:
+            self._reconnect()
 
     def ping(self):
-        self._client.ping()
+        try:
+            self._client.ping()
+        except MQTTException as e:
+            self._reconnect()
 
     def _on_message(self, topic, msg):
         class Msg:
@@ -63,4 +93,7 @@ class PepeunitMqttClient:
             self._input_handler(m)
 
     def check_msg(self):
-        self._client.check_msg()
+        try:
+            return self._client.check_msg()
+        except MQTTException as e:
+            self._reconnect()
