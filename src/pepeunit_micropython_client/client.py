@@ -66,6 +66,7 @@ class PepeunitClient:
         self._last_state_send = 0
         self._in_mqtt_callback = False
         self._resubscribe_requested = False
+        self._last_mqtt_ping_ms = time.ticks_ms()
 
     def get_system_state(self):
         gc.collect()
@@ -248,6 +249,15 @@ class PepeunitClient:
 
                 if self.mqtt_output_handler:
                     self.mqtt_output_handler(self)
+
+                if self.settings.PU_MQTT_PING_INTERVAL > 0 and self.settings.PU_MQTT_KEEPALIVE > 0:
+                    now = time.ticks_ms()
+                    if self.settings.PU_MQTT_PING_INTERVAL < self.settings.PU_MQTT_KEEPALIVE:
+                        if time.ticks_diff(now, self._last_mqtt_ping_ms) >= int(self.settings.PU_MQTT_PING_INTERVAL * 1000):
+                            self.mqtt_client.ping()
+                            self._last_mqtt_ping_ms = now
+                    else:
+                        self.logger.warning('PU_MQTT_PING_INTERVAL > PU_MQTT_KEEPALIVE. Ping logic disabled', file_only=True)
 
                 time.sleep(self.cycle_speed)
         finally:

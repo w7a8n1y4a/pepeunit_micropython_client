@@ -202,6 +202,7 @@ Method | Description
 `set_input_handler(handler)` | Sets a handler for incoming MQTT messages.
 `subscribe_topics(topics)` | Subscribes to the provided list of topics.
 `publish(topic, message)` | Publishes a message to the specified topic.
+`ping()` | Sends MQTT PINGREQ to keep the connection alive.
 `check_msg()` | Polls and processes incoming messages.
 
 ### PepeunitRestClient

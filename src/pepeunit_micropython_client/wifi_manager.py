@@ -159,4 +159,3 @@ class WifiManager:
         if interval > self.settings.PUC_MAX_RECONNECTION_INTERVAL:
             return self.settings.PUC_MAX_RECONNECTION_INTERVAL
         return int(interval)
-

@@ -20,7 +20,7 @@ class PepeunitMqttClient:
             port=self.settings.PU_MQTT_PORT,
             user=self.settings.PU_AUTH_TOKEN,
             password="",
-            keepalive=self.settings.PU_MQTT_PING_INTERVAL,
+            keepalive=self.settings.PU_MQTT_KEEPALIVE,
             socket_timeout=5,
         )
         c.set_callback(self._on_message)
@@ -48,6 +48,9 @@ class PepeunitMqttClient:
     def publish(self, topic, message):
         if self._client:
             self._client.publish(topic, message)
+
+    def ping(self):
+        self._client.ping()
 
     def _on_message(self, topic, msg):
         class Msg:
