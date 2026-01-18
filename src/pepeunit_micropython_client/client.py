@@ -250,6 +250,7 @@ class PepeunitClient:
                     else:
                         self.logger.warning('PU_MQTT_PING_INTERVAL > PU_MQTT_KEEPALIVE. Ping logic disabled', file_only=True)
 
+                gc.collect()
                 time.sleep(self.cycle_speed)
         finally:
             self._running = False
