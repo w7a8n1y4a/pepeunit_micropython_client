@@ -3,7 +3,6 @@ import os
 import gc
 from shutil import shutil as shutil
 
-
 class FileManager:
     @staticmethod
     def dirname(path):
@@ -39,7 +38,6 @@ class FileManager:
         FileManager._ensure_dir(FileManager.dirname(file_path))
         with open(file_path, 'w') as f:
             json.dump(data, f)
-        gc.collect()
 
     @staticmethod
     def file_exists(file_path):
@@ -75,7 +73,6 @@ class FileManager:
                 f.write('\n')
         except Exception:
             pass
-        gc.collect()
         FileManager.trim_ndjson(file_path, max_lines)
 
     @staticmethod
@@ -159,3 +156,4 @@ class FileManager:
                 with open(out_path, 'wb') as outf:
                     shutil.copyfileobj(subf, outf)
                     outf.close()
+        gc.collect()

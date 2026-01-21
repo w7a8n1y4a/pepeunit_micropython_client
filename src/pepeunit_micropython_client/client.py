@@ -21,7 +21,7 @@ class PepeunitClient:
         env_file_path,
         schema_file_path,
         log_file_path,
-        cycle_speed=0.1,
+        frequency_check_mqtt=20,
         restart_mode=RestartMode.RESTART_EXEC,
         ntp_host='pool.ntp.org',
         sta=None,
@@ -32,7 +32,7 @@ class PepeunitClient:
         self.env_file_path = env_file_path
         self.schema_file_path = schema_file_path
         self.log_file_path = log_file_path
-        self.cycle_speed = cycle_speed
+        self.frequency_check_mqtt = frequency_check_mqtt
         self.restart_mode = restart_mode
         self.ff_version_check_enable = ff_version_check_enable
         self.sta = sta
@@ -69,7 +69,6 @@ class PepeunitClient:
         self._last_mqtt_ping_ms = time.ticks_ms()
 
     def get_system_state(self):
-        gc.collect()
         state = {
             'millis': self.time_manager.get_epoch_ms(),
             'mem_free': gc.mem_free(),
@@ -137,7 +136,6 @@ class PepeunitClient:
         return self.rest_client.get_state_storage()
 
     def _handle_update(self, msg):
-        gc.collect()
         payload = json.loads(msg.payload) if msg.payload else {}
 
         if self.custom_update_handler:
@@ -162,7 +160,6 @@ class PepeunitClient:
         unit_directory = FileManager.dirname(self.env_file_path)
         FileManager.extract_tar_gz(tmp, unit_directory)
         self.logger.info('Success extract archive', file_only=True)
-
         gc.collect()
 
         try:
@@ -228,6 +225,7 @@ class PepeunitClient:
 
     def run_main_cycle(self):
         self._running = True
+        next_check_ms = time.ticks_ms()
         try:
             while self._running:
                 if self._resubscribe_requested and not self._in_mqtt_callback:
@@ -235,7 +233,12 @@ class PepeunitClient:
                         self._subscribe_all_schema_topics_now()
                     finally:
                         self._resubscribe_requested = False
-                self.mqtt_client.check_msg()
+
+                now_ms = time.ticks_ms()
+                if self.frequency_check_mqtt <= 0 or time.ticks_diff(now_ms, next_check_ms) >= 0:
+                    self.mqtt_client.check_msg()
+                    next_check_ms = time.ticks_add(now_ms, int(self.frequency_check_mqtt))
+                    
                 self._base_mqtt_output_handler()
 
                 if self.mqtt_output_handler:
@@ -250,8 +253,7 @@ class PepeunitClient:
                     else:
                         self.logger.warning('PU_MQTT_PING_INTERVAL > PU_MQTT_KEEPALIVE. Ping logic disabled', file_only=True)
 
-                gc.collect()
-                time.sleep(self.cycle_speed)
+                machine.idle()
         finally:
             self._running = False
 

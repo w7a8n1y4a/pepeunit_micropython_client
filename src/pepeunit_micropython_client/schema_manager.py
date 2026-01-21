@@ -1,5 +1,3 @@
-import gc
-
 from .file_manager import FileManager
 from .enums import SearchTopicType, SearchScope, DestinationTopicType
 
@@ -11,7 +9,6 @@ class SchemaManager:
 
     def update_from_file(self):
         self._schema_data = FileManager.read_json(self.schema_file_path)
-        gc.collect()
 
         return self._schema_data
 

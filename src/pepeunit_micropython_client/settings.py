@@ -1,5 +1,4 @@
 import ujson as json
-import gc
 import ubinascii as binascii
 
 from .file_manager import FileManager
@@ -36,16 +35,13 @@ class Settings:
     @property
     def unit_uuid(self):
         data = self.PU_AUTH_TOKEN.split('.')[1].encode()
-        gc.collect()
         uuid = json.loads(binascii.a2b_base64(data + (len(data) % 4) * b'=').decode('utf-8'))['uuid']
-        gc.collect()
         return uuid
 
     def load_from_file(self):
         if not self.env_file_path or not FileManager.file_exists(self.env_file_path):
             return
         data = FileManager.read_json(self.env_file_path)
-        gc.collect()
 
         for k, v in data.items():
             setattr(self, k, v)

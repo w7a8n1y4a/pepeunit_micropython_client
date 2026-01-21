@@ -1,5 +1,4 @@
 import os
-import gc
 import ubinascii as binascii
 
 import ucryptolib as _cryptolib
@@ -18,9 +17,7 @@ class AesGcmCipher:
 
         key = self._get_key(key)
         ciphertext, tag = self._aes_gcm_encrypt(plaintext, nonce, key)
-        gc.collect()
         out = self._b64encode(nonce) + "." + self._b64encode(ciphertext + tag)
-        gc.collect()
         return out
 
     def aes_gcm_decode(self, data: str, key: str) -> str:
@@ -149,7 +146,6 @@ class AesGcmCipher:
 
         S = self._ghash(H, b"", bytes(ciphertext))
         tag = self._xor_bytes(self._aes_ecb_encrypt_block(J0, ecb), S)
-        gc.collect()
         return bytes(ciphertext), tag
 
     def _aes_gcm_decrypt(self, ciphertext: bytes, tag: bytes, nonce: bytes, key: bytes) -> bytes:

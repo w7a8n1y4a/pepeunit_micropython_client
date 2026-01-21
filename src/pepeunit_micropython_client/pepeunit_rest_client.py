@@ -16,7 +16,6 @@ class PepeunitRestClient:
         }
 
     def _get_base_url(self):
-        gc.collect()
         return (
             self.settings.PU_HTTP_TYPE
             + '://'
@@ -26,8 +25,6 @@ class PepeunitRestClient:
         )
 
     def _download_file(self, url, headers, file_path):
-        gc.collect()
-
         r = mrequests.get(url=url, headers=headers)
 
         if r.status_code == 200:
@@ -52,6 +49,7 @@ class PepeunitRestClient:
         read_file = FileManager.read_json(file_path)
         json_load = json.loads(read_file)
         FileManager.write_json(file_path, json_load)
+        gc.collect()
 
     def download_schema(self, file_path):
         url = self._get_base_url() + '/units/get_current_schema/' + self.settings.unit_uuid
@@ -62,6 +60,7 @@ class PepeunitRestClient:
         read_file = FileManager.read_json(file_path)
         json_load = json.loads(read_file)
         FileManager.write_json(file_path, json_load)
+        gc.collect()
 
     def set_state_storage(self, state):
         url = self._get_base_url() + '/units/set_state_storage/' + self.settings.unit_uuid
@@ -99,7 +98,6 @@ class PepeunitRestClient:
         query = '&'.join(['{}={}'.format(k, v) for (k, v) in params])
         url = base_url + '?' + query
 
-        gc.collect()
         r = mrequests.get(url=url, headers=headers)
         if r.status_code >= 400:
             raise OSError('HTTP error ' + str(r.status_code))
@@ -131,7 +129,6 @@ class PepeunitRestClient:
         query = '&'.join(['{}={}'.format(k, v) for (k, v) in params])
         url = base_url + '?' + query
 
-        gc.collect()
         r = mrequests.get(url=url, headers=headers)
         if r.status_code >= 400:
             raise OSError('HTTP error ' + str(r.status_code))
