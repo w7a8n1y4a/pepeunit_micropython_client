@@ -71,6 +71,8 @@ class PepeunitRestClient:
         if r.status_code >= 400:
             raise OSError('HTTP error ' + str(r.status_code))
         r.close()
+        gc.collect()
+        
 
     def get_state_storage(self):
         url = self._get_base_url() + '/units/get_state_storage/' + self.settings.unit_uuid
@@ -81,6 +83,8 @@ class PepeunitRestClient:
             raise OSError('HTTP error ' + str(r.status_code))
         data = r.text
         r.close()
+        gc.collect()
+
         return data
 
     def get_input_by_output(self, topic, limit=10, offset=0):

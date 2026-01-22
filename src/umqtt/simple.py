@@ -1,5 +1,8 @@
 import socket
 import struct
+import gc
+import select
+
 
 class MQTTException(Exception):
     def __init__(self, msg=None, cause=None, errno=None, transport=False):
@@ -38,6 +41,7 @@ class MQTTClient:
         self.lw_qos = 0
         self.lw_retain = False
         self.socket_timeout = socket_timeout
+        self._poller = None
 
     def _set_sock_timeout(self):
         if self.socket_timeout is None:
@@ -46,6 +50,27 @@ class MQTTClient:
             self.sock.settimeout(self.socket_timeout)
         except Exception:
             pass
+
+    def _setup_poller(self):
+        self._poller = select.poll()
+        self._poller.register(
+            self.sock,
+            select.POLLIN | select.POLLOUT | select.POLLERR | select.POLLHUP,
+        )
+
+    def _poll(self, mask, timeout_ms):
+        if self._poller is None:
+            return True
+        try:
+            events = self._poller.poll(timeout_ms)
+        except Exception:
+            return True
+        for _, event in events:
+            if event & (select.POLLERR | select.POLLHUP):
+                raise MQTTException("poll", transport=True)
+            if event & mask:
+                return True
+        return False
 
     def _raise_transport(self, e, where="socket"):
         errno = None
@@ -57,6 +82,10 @@ class MQTTClient:
 
     def _sock_write(self, buf, length=None):
         try:
+            if self._poller and self.socket_timeout is not None:
+                timeout_ms = int(self.socket_timeout * 1000)
+                if not self._poll(select.POLLOUT, timeout_ms):
+                    raise MQTTException("write_timeout", transport=True)
             if length is None:
                 return self.sock.write(buf)
             return self.sock.write(buf, length)
@@ -105,6 +134,8 @@ class MQTTClient:
         if self.ssl:
             self.sock = self.ssl.wrap_socket(self.sock, server_hostname=self.server)
             self._set_sock_timeout()
+        self._setup_poller()
+        
         premsg = bytearray(b"\x10\0\0\0\0\0")
         msg = bytearray(b"\x04MQTT\x04\x02\0\0")
 
@@ -142,6 +173,8 @@ class MQTTClient:
         assert resp[0] == 0x20 and resp[1] == 0x02
         if resp[3] != 0:
             raise MQTTException(resp[3])
+        gc.collect()
+        
         return resp[2] & 1
 
     def disconnect(self):
@@ -151,8 +184,14 @@ class MQTTClient:
             pass
 
         if self.sock:
-            self.sock.close()
+            try:
+                self.sock.close()
+            except Exception:
+                pass
         self.sock = None
+        self._poller = None
+        gc.collect()
+        
 
     def ping(self):
         self._sock_write(b"\xc0\0")
@@ -187,9 +226,11 @@ class MQTTClient:
                     rcv_pid = self._sock_read(2)
                     rcv_pid = rcv_pid[0] << 8 | rcv_pid[1]
                     if pid == rcv_pid:
+                        gc.collect()
                         return
         elif qos == 2:
             assert 0
+        gc.collect()
 
     def subscribe(self, topic, qos=0):
         assert self.cb is not None, "Subscribe callback is not set"
@@ -206,14 +247,17 @@ class MQTTClient:
                 assert resp[1] == pkt[2] and resp[2] == pkt[3]
                 if resp[3] == 0x80:
                     raise MQTTException(resp[3])
+                gc.collect()
                 return
 
-    def wait_msg(self):
-        res = self._sock_read(1)
+    def wait_msg(self, blocking=True):
+        if not blocking and self._poller and not self._poll(select.POLLIN, 0):
+            return None
         if self.socket_timeout is None:
             self.sock.setblocking(True)
         else:
             self._set_sock_timeout()
+        res = self._sock_read(1)
         if res is None:
             return None
         if res == b"":
@@ -242,8 +286,8 @@ class MQTTClient:
             self._sock_write(pkt)
         elif op & 6 == 4:
             assert 0
+        gc.collect()
         return op
 
     def check_msg(self):
-        self.sock.setblocking(False)
-        return self.wait_msg()
+        return self.wait_msg(blocking=False)
