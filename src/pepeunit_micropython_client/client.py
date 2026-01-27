@@ -95,6 +95,7 @@ class PepeunitClient:
                 if self.mqtt_input_handler:
                     self.mqtt_input_handler(self, msg)
             finally:
+                self._last_state_send = time.ticks_ms()
                 self._in_mqtt_callback = False
         self.mqtt_client.set_input_handler(combined_handler)
 
@@ -233,10 +234,10 @@ class PepeunitClient:
 
                 self.mqtt_client.check_msg()
                     
-                self._base_mqtt_output_handler()
-
                 if self.mqtt_output_handler:
                     self.mqtt_output_handler(self)
+
+                self._base_mqtt_output_handler()
 
                 if self.settings.PU_MQTT_PING_INTERVAL > 0 and self.settings.PU_MQTT_KEEPALIVE > 0:
                     now = time.ticks_ms()
@@ -244,10 +245,11 @@ class PepeunitClient:
                         if time.ticks_diff(now, self._last_mqtt_ping_ms) >= int(self.settings.PU_MQTT_PING_INTERVAL * 1000):
                             self.mqtt_client.ping()
                             self._last_mqtt_ping_ms = now
+                            print('ping')
                     else:
                         self.logger.warning('PU_MQTT_PING_INTERVAL > PU_MQTT_KEEPALIVE. Ping logic disabled', file_only=True)
 
-                time.sleep_ms(0)
+                time.sleep_ms(1)
         finally:
             self._running = False
 

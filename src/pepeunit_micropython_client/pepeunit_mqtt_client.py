@@ -87,7 +87,7 @@ class PepeunitMqttClient:
             pass
         m = Msg()
         m.topic = topic.decode('utf-8') if isinstance(topic, bytes) else topic
-        m.payload = msg.decode('utf-8') if isinstance(msg, bytes) else msg
+        m.payload = msg
 
         if self._input_handler:
             self._input_handler(m)
