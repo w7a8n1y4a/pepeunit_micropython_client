@@ -4,8 +4,8 @@ set -euo pipefail
 ROOT_DIR=$(cd "$(dirname "$0")" && pwd)
 MPY_DIR="$ROOT_DIR/micropython"
 BOARD="ESP8266_GENERIC"
-TAG="v1.26.1"
-OUTPUT_NAME="${OUTPUT_NAME:-ESP8266_GENERIC-v1.26.1-PEPEUNIT-v1.1.1.bin}"
+TAG="v1.27.0"
+OUTPUT_NAME="${OUTPUT_NAME:-ESP8266_GENERIC-v1.27.0-PEPEUNIT-v1.1.1.bin}"
 DEFAULT_MANIFEST="$ROOT_DIR/manifests/esp8266_manifest_2MiB.py"
 # Allow override via env; otherwise use our project manifest
 FROZEN_MANIFEST="${FROZEN_MANIFEST:-$DEFAULT_MANIFEST}"

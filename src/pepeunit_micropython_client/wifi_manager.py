@@ -1,6 +1,8 @@
 import time
 import network
 
+import utils
+
 from .settings import Settings
 from .logger import Logger
 
@@ -73,11 +75,12 @@ class WifiManager:
         sta = self.get_sta()
         self.logger.info("WiFi run scan existing ssid`s", file_only=True)
         scan = sta.scan()
-        for ap in scan:
+        for idx, ap in enumerate(scan, 1):
             ap_ssid = ap[0]
             ap_ssid = self._decode_ssid(ap_ssid)
             if ap_ssid == self.settings.PUC_WIFI_SSID:
                 return True
+            utils._yield(idx, every=8, do_gc=False)
         return False
 
     def connect_once(self, timeout_ms=10000):

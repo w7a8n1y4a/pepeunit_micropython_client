@@ -4,9 +4,9 @@ set -euo pipefail
 ROOT_DIR=$(cd "$(dirname "$0")" && pwd)
 MPY_DIR="$ROOT_DIR/micropython"
 BOARD="ESP32_GENERIC"
-TAG="v1.26.1"
+TAG="v1.27.0"
 IDF_VERSION="${IDF_VERSION:-v5.4.2}"
-OUTPUT_NAME="${OUTPUT_NAME:-ESP32_GENERIC-v1.26.1-PEPEUNIT-v1.1.1.bin}"
+OUTPUT_NAME="${OUTPUT_NAME:-ESP32_GENERIC-v1.27.0-PEPEUNIT-v1.1.1.bin}"
 DEFAULT_MANIFEST="$ROOT_DIR/manifests/esp32_manifest.py"
 if [[ -z "${FROZEN_MANIFEST:-}" && -f "$DEFAULT_MANIFEST" ]]; then
   FROZEN_MANIFEST="$DEFAULT_MANIFEST"

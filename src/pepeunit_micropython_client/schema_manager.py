@@ -1,6 +1,8 @@
 from .file_manager import FileManager
 from .enums import SearchTopicType, SearchScope, DestinationTopicType
 
+import utils
+
 
 class SchemaManager:
     def __init__(self, schema_file_path):
@@ -53,22 +55,33 @@ class SchemaManager:
 
     def _search_uuid_in_topic_section(self, section, uuid):
         topic_section = self._schema_data.get(section, {})
+        idx = 0
         for topic_name, topic_list in topic_section.items():
             for topic_url in topic_list:
                 if self._extract_uuid_from_topic(topic_url) == uuid:
                     return topic_name
+                idx += 1
+                utils._yield(idx, every=32)
         return None
 
     def _extract_uuid_from_topic(self, topic_url):
-        parts = topic_url.split('/')
-        if len(parts) >= 2:
-            return parts[1]
-        return None
+        first = topic_url.find('/')
+        if first < 0:
+            return None
+        second = topic_url.find('/', first + 1)
+        if second < 0:
+            uuid = topic_url[first + 1:]
+        else:
+            uuid = topic_url[first + 1:second]
+        return uuid if uuid else None
 
     def _search_topic_name_in_section(self, section, topic_name):
         topic_section = self._schema_data.get(section, {})
+        idx = 0
         for topic_key, topic_list in topic_section.items():
             for topic_url in topic_list:
                 if topic_url == topic_name:
                     return topic_key
+                idx += 1
+                utils._yield(idx, every=32)
         return None

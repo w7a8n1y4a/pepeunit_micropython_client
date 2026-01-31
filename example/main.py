@@ -31,9 +31,9 @@ def output_handler(client: PepeunitClient):
     
     if (current_time - last_output_send_time) / 1000 >= client.settings.DELAY_PUB_MSG:
         message = str(time.ticks_ms())
-        print('free mem:', gc.mem_free())
+        #print('free mem:', gc.mem_free())
         
-        client.logger.debug(f"Send to output/pepeunit: {message}", file_only=True)
+        #client.logger.debug(f"Send to output/pepeunit: {message}", file_only=True)
         
         client.publish_to_topics("output/pepeunit", message)
         
@@ -52,7 +52,8 @@ def input_handler(client: PepeunitClient, msg):
                 value = msg.payload
                 try:
                     value = int(value)
-                    client.logger.debug(f"Get from input/pepeunit: {value}", file_only=True)
+                    print('time', time.ticks_ms(), 'free mem:', gc.mem_free())
+                    #client.logger.debug(f"Get from input/pepeunit: {value}", file_only=True)
 
                 except ValueError:
                     client.logger.error(f"Value is not a number: {value}")

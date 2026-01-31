@@ -46,9 +46,9 @@ class PepeunitRestClient:
         headers = self._get_auth_headers()
         self._download_file(url, headers, file_path)
         
-        read_file = FileManager.read_json(file_path)
-        json_load = json.loads(read_file)
-        FileManager.write_json(file_path, json_load)
+        data = FileManager.read_json(file_path)
+        FileManager.write_json(file_path, data)
+        del data
         gc.collect()
 
     def download_schema(self, file_path):
@@ -57,9 +57,9 @@ class PepeunitRestClient:
 
         self._download_file(url, headers, file_path)
 
-        read_file = FileManager.read_json(file_path)
-        json_load = json.loads(read_file)
-        FileManager.write_json(file_path, json_load)
+        data = FileManager.read_json(file_path)
+        FileManager.write_json(file_path, data)
+        del data
         gc.collect()
 
     def set_state_storage(self, state):

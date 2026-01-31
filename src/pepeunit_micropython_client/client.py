@@ -172,26 +172,17 @@ class PepeunitClient:
         except Exception:
             pass
 
-        mem = gc.mem_free()
-        batch_size = 8 if mem >= 6000 else (4 if mem >= 3000 else 2)
         topic = self.schema.output_base_topic[BaseOutputTopicType.LOG_PEPEUNIT][0]
 
-        def flush_batch_bytes(batch):
-            if not batch:
-                return
-            payload = b'[' + b','.join(batch) + b']'
-            self.mqtt_client.publish(topic, payload)
-            
-            batch.clear()
-            gc.collect()
-
-        batch = []
         try:
             for line in FileManager.iter_lines_bytes(self.logger.log_file_path):
-                batch.append(line)
-                if len(batch) >= batch_size:
-                    flush_batch_bytes(batch)
-            flush_batch_bytes(batch)
+                self.mqtt_client.publish_now(topic, line)
+                if gc.mem_free() < 8000:
+                    gc.collect()
+
+                time.sleep_ms(50)
+
+            self.logger.info('Success send logs to MQTT')
         except Exception:
             pass
 
@@ -232,7 +223,8 @@ class PepeunitClient:
                     finally:
                         self._resubscribe_requested = False
 
-                self.mqtt_client.check_msg()
+                self.mqtt_client.service_io(budget_ms=5, max_in=16, max_out=1)
+                self.mqtt_client.dispatch_one()
                     
                 if self.mqtt_output_handler:
                     self.mqtt_output_handler(self)

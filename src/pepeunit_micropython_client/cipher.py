@@ -1,6 +1,8 @@
 import os
 import ubinascii as binascii
 
+import utils
+
 import ucryptolib as _cryptolib
 
 
@@ -99,6 +101,7 @@ class AesGcmCipher:
                 v = (v >> 1) ^ R
             else:
                 v >>= 1
+            utils._yield(i + 1, every=32, do_gc=False)
         return z
 
     def _ghash(self, H: bytes, associated_data: bytes, ciphertext: bytes) -> bytes:
@@ -110,12 +113,14 @@ class AesGcmCipher:
             for i in range(0, len(aad_padded), 16):
                 y ^= self._from_bytes(aad_padded[i : i + 16])
                 y = self._gf_mul(y, h)
+                utils._yield((i // 16) + 1, every=32, do_gc=False)
 
         if ciphertext:
             c_padded = self._pad16(ciphertext)
             for i in range(0, len(c_padded), 16):
                 y ^= self._from_bytes(c_padded[i : i + 16])
                 y = self._gf_mul(y, h)
+                utils._yield((i // 16) + 1, every=32, do_gc=False)
 
         aad_bits = (len(associated_data) if associated_data else 0) * 8
         c_bits = len(ciphertext) * 8
@@ -143,6 +148,7 @@ class AesGcmCipher:
             ciphertext[i : i + len(block)] = ct_block
             i += len(block)
             counter = self._inc32(counter)
+            utils._yield(i // 16, every=32, do_gc=False)
 
         S = self._ghash(H, b"", bytes(ciphertext))
         tag = self._xor_bytes(self._aes_ecb_encrypt_block(J0, ecb), S)
@@ -178,6 +184,7 @@ class AesGcmCipher:
             plaintext[i : i + len(block)] = pt_block
             i += len(block)
             counter = self._inc32(counter)
+            utils._yield(i // 16, every=32, do_gc=False)
 
         return bytes(plaintext)
 

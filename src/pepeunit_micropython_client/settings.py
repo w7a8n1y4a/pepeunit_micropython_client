@@ -27,6 +27,7 @@ class Settings:
 
     def __init__(self, env_file_path=None, **kwargs):
         self.env_file_path = env_file_path
+        self._unit_uuid = None
         if env_file_path:
             self.load_from_file()
         for k, v in kwargs.items():
@@ -34,8 +35,11 @@ class Settings:
 
     @property
     def unit_uuid(self):
+        if self._unit_uuid is not None:
+            return self._unit_uuid
         data = self.PU_AUTH_TOKEN.split('.')[1].encode()
         uuid = json.loads(binascii.a2b_base64(data + (len(data) % 4) * b'=').decode('utf-8'))['uuid']
+        self._unit_uuid = uuid
         return uuid
 
     def load_from_file(self):
@@ -45,3 +49,4 @@ class Settings:
 
         for k, v in data.items():
             setattr(self, k, v)
+        self._unit_uuid = None
