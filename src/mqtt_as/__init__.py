@@ -10,31 +10,13 @@ gc.collect()
 from errno import EINPROGRESS, ETIMEDOUT
 
 gc.collect()
-
-gc.collect()
 from sys import platform
 
-VERSION = (0, 8, 4)
-
-
 IBUFSIZE = 50
-
-
 MSG_BYTES = True
-
-
-ESP32 = platform == "esp32"
-RP2 = platform == "rp2"
-if ESP32:
-
-    BUSY_ERRORS = [EINPROGRESS, ETIMEDOUT, 118, 119]
-elif RP2:
-    BUSY_ERRORS = [EINPROGRESS, ETIMEDOUT, -110]
-else:
-    BUSY_ERRORS = [EINPROGRESS, ETIMEDOUT]
-
 ESP8266 = platform == "esp8266"
-
+ESP32 = platform == "esp32"
+BUSY_ERRORS = [EINPROGRESS, ETIMEDOUT, 118, 119] if platform == "esp32" else [EINPROGRESS, ETIMEDOUT]
 
 
 async def eliza(*_):
@@ -91,10 +73,14 @@ def qos_check(qos):
 
 
 def vbi(buf: bytearray, offs: int, x: int):
-    buf[offs] = x & 0x7F
-    if x := x >> 7:
-        buf[offs] |= 0x80
-    return vbi(buf, offs + 1, x) if x else (offs + 1)
+    while True:
+        buf[offs] = x & 0x7F
+        x >>= 7
+        if x:
+            buf[offs] |= 0x80
+            offs += 1
+            continue
+        return offs + 1
 
 
 encode_properties = None
@@ -219,16 +205,18 @@ class MQTTClient:
     def _timeout(self, t):
         return time.ticks_diff(time.ticks_ms(), t) > self._response_time
 
-    async def _as_read(self, n, sock=None):
+    async def _as_read(self, n, sock=None, use_ibuf=True):
         if sock is None:
             sock = self._sock
 
-        oflow = n - len(self._ibuf)
-        if oflow > 0:
-
-            self._ibuf.extend(bytearray(oflow + 50))
-            self._mvbuf = memoryview(self._ibuf)
-        buffer = self._mvbuf
+        if use_ibuf:
+            oflow = n - len(self._ibuf)
+            if oflow > 0:
+                self._ibuf.extend(bytearray(oflow))
+                self._mvbuf = memoryview(self._ibuf)
+            buffer = self._mvbuf
+        else:
+            buffer = memoryview(bytearray(n))
         size = 0
         t = time.ticks_ms()
         while size < n:
@@ -276,10 +264,15 @@ class MQTTClient:
         await self._as_write(s)
 
 
-    async def _recv_len(self, d=0, i=0):
-        s = (await self._as_read(1))[0]
-        d |= (s & 0x7F) << (i * 7)
-        return await self._recv_len(d, i + 1) if (s & 0x80) else (d, i + 1)
+    async def _recv_len(self):
+        d = 0
+        i = 0
+        while True:
+            s = (await self._as_read(1))[0]
+            d |= (s & 0x7F) << (i * 7)
+            i += 1
+            if not (s & 0x80):
+                return d, i
 
     async def _connect(self, clean):
         self._sock = socket.socket()
@@ -342,47 +335,6 @@ class MQTTClient:
         async with self.lock:
             await self._as_write(b"\xc0\0")
 
-    async def wan_ok(
-        self,
-        packet=b"$\x1a\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x03www\x06google\x03com\x00\x00\x01\x00\x01",
-    ):
-        if not self.isconnected():
-            return False
-        length = 32
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.setblocking(False)
-        s.connect(("8.8.8.8", 53))
-        await asyncio.sleep(1)
-        async with self.lock:
-            try:
-                await self._as_write(packet, sock=s)
-                await asyncio.sleep(2)
-                res = await self._as_read(length, s)
-                if len(res) == length:
-                    return True
-            except OSError:
-                return False
-            finally:
-                s.close()
-        return False
-
-    async def broker_up(self):
-        if not self.isconnected():
-            return False
-        tlast = self.last_rx
-        if time.ticks_diff(time.ticks_ms(), tlast) < 1000:
-            return True
-        try:
-            await self._ping()
-        except OSError:
-            return False
-        t = time.ticks_ms()
-        while not self._timeout(t):
-            await asyncio.sleep_ms(100)
-            if time.ticks_diff(self.last_rx, tlast) > 0:
-                return True
-        return False
-
     async def disconnect(self):
         if self._sock is not None:
             await self._kill_tasks(False)
@@ -398,9 +350,6 @@ class MQTTClient:
     def _close(self):
         if self._sock is not None:
             self._sock.close()
-
-    def close(self):
-        self._close()
 
     async def _await_pid(self, pid):
         t = time.ticks_ms()
@@ -545,7 +494,7 @@ class MQTTClient:
         sz, _ = await self._recv_len()
         topic_len = await self._as_read(2)
         topic_len = (topic_len[0] << 8) | topic_len[1]
-        topic = await self._as_read(topic_len)
+        topic = await self._as_read(topic_len, use_ibuf=topic_len <= len(self._ibuf))
         topic = bytes(topic)
         sz -= topic_len + 2
 
@@ -554,16 +503,12 @@ class MQTTClient:
             pid = pid[0] << 8 | pid[1]
             sz -= 2
 
-        decoded_props = None
-
-        msg = await self._as_read(sz)
+        msg = await self._as_read(sz, use_ibuf=sz <= len(self._ibuf))
 
         if self._events or MSG_BYTES:
             msg = bytes(msg)
         retained = op & 0x01
-        args = [topic, msg, bool(retained)]
-
-        self._cb(*args)
+        self._cb(topic, msg, bool(retained))
 
         if op & 6 == 2:
             pkt = bytearray(b"\x40\x02\0\0")
