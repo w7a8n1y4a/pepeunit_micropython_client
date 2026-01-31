@@ -78,6 +78,7 @@ async def test_set_get_storage(client: PepeunitClient):
 
 async def test_get_units(client: PepeunitClient):
     try:
+        gc.collect()
         output_topic_urls = client.schema.output_topic.get('output/pepeunit', [])
         if output_topic_urls:
             unit_nodes_response = await client.rest_client.get_input_by_output(output_topic_urls[0], limit=1, offset=0)
@@ -91,13 +92,20 @@ async def test_get_units(client: PepeunitClient):
                     break
             
             if unit_node_uuids:
-                units_response = await client.rest_client.get_units_by_nodes(unit_node_uuids, limit=1, offset=0)
+                gc.collect()
+                units_response = await client.rest_client.get_units_by_nodes(
+                    unit_node_uuids,
+                    limit=1,
+                    offset=0
+                )
                 client.logger.info("Found {} units".format(units_response.get('count', 0)))
                 
                 for unit in units_response.get('units', []):
                     name = unit.get('name')
                     uuid = unit.get('uuid')
                     client.logger.info("Unit: {} (UUID: {})".format(name, uuid))
+            gc.collect()
+
     except Exception as e:
         client.logger.error("Test get units failed: {}".format(e))
 

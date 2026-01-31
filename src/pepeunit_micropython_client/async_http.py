@@ -220,7 +220,7 @@ async def request(method, url, headers=None, body=None, *, save_to=None, bufsize
             if (len(out) & 0x3FF) == 0:
                 await asyncio.sleep_ms(0)
         gc.collect()
-        return status, resp_headers, bytes(out)
+        return status, resp_headers, out
     finally:
         try:
             s.close()

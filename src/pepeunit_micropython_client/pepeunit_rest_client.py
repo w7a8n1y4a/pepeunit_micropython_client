@@ -89,10 +89,12 @@ class PepeunitRestClient:
         query = '&'.join(['{}={}'.format(k, v) for (k, v) in params])
         url = base_url + '?' + query
 
+        gc.collect()
         status, _, body = await request("GET", url, headers=headers, max_body=16_000)
         if status >= 400:
             raise OSError("HTTP error {}".format(status))
 
+        gc.collect()
         data = json.loads(body)
         gc.collect()
         return data
@@ -118,10 +120,12 @@ class PepeunitRestClient:
         query = '&'.join(['{}={}'.format(k, v) for (k, v) in params])
         url = base_url + '?' + query
 
+        gc.collect()
         status, _, body = await request("GET", url, headers=headers, max_body=32_000)
         if status >= 400:
             raise OSError("HTTP error {}".format(status))
 
+        gc.collect()
         data = json.loads(body)
         gc.collect()
         return data
