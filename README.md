@@ -115,9 +115,9 @@ def test_cipher(client: PepeunitClient):
     try:
         aes_cipher = AesGcmCipher()
         text = "pepeunit cipher test"
-        enc = aes_cipher.aes_gcm_encode(text, client.settings.PU_ENCRYPT_KEY)
+        enc = await aes_cipher.aes_gcm_encode(text, client.settings.PU_ENCRYPT_KEY)
         client.logger.info(f"Cipher data {enc}")
-        dec = aes_cipher.aes_gcm_decode(enc, client.settings.PU_ENCRYPT_KEY)
+        dec = await aes_cipher.aes_gcm_decode(enc, client.settings.PU_ENCRYPT_KEY)
         client.logger.info(f"Decoded data: {dec}")
     except Exception as e:
         client.logger.error("Cipher test error: {}".format(e))
@@ -287,8 +287,8 @@ The key can be 16, 24, or 32 bits long.
 
 Method | Description
 --- | ---
-`aes_gcm_encode(data: str, key: str) -> str` | Encrypts text and returns `base64(nonce).base64(cipher)`.
-`aes_gcm_decode(data: str, key: str) -> str` | Decrypts encoded string back to plaintext.
+`aes_gcm_encode(data: str, key: str) -> str` | Async encrypt; returns `base64(nonce).base64(cipher)`.
+`aes_gcm_decode(data: str, key: str) -> str` | Async decrypts encoded string back to plaintext.
 
 ### Enum
 

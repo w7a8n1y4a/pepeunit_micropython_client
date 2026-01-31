@@ -1,28 +1,40 @@
 import os
 import ubinascii as binascii
 
-import utils
+try:
+    import uasyncio as asyncio  # MicroPython
+except ImportError:  # CPython
+    import asyncio
+
+import gc
 
 import ucryptolib as _cryptolib
 
 
 class AesGcmCipher:
+    @staticmethod
+    async def _ayield(counter, every=32, mem_free_threshold=8000, do_gc=False):
+        if counter % every == 0:
+            if do_gc and gc.mem_free() < mem_free_threshold:
+                gc.collect()
+            await asyncio.sleep_ms(0)
+
     def _get_key(self, key_b64: str) -> bytes:
         key = self._b64decode_to_bytes(key_b64)
         if len(key) not in (16, 24, 32):
             raise ValueError("AES key must be 16, 24, or 32 bytes after base64 decoding")
         return key
     
-    def aes_gcm_encode(self, data: str, key: str) -> str:
+    async def aes_gcm_encode(self, data: str, key: str) -> str:
         plaintext = data.encode("utf-8")
         nonce = os.urandom(12)
 
         key = self._get_key(key)
-        ciphertext, tag = self._aes_gcm_encrypt(plaintext, nonce, key)
+        ciphertext, tag = await self._aes_gcm_encrypt(plaintext, nonce, key)
         out = self._b64encode(nonce) + "." + self._b64encode(ciphertext + tag)
         return out
 
-    def aes_gcm_decode(self, data: str, key: str) -> str:
+    async def aes_gcm_decode(self, data: str, key: str) -> str:
         parts = data.split(".")
         if len(parts) != 2:
             raise ValueError("Invalid ciphertext format")
@@ -36,7 +48,7 @@ class AesGcmCipher:
         ciphertext = ct_and_tag[:-16]
         tag = ct_and_tag[-16:]
         key = self._get_key(key)
-        plaintext = self._aes_gcm_decrypt(ciphertext, tag, nonce, key)
+        plaintext = await self._aes_gcm_decrypt(ciphertext, tag, nonce, key)
         return plaintext.decode("utf-8")
 
     @staticmethod
@@ -90,7 +102,7 @@ class AesGcmCipher:
         return bytes(y)
 
     @staticmethod
-    def _gf_mul(x: int, y: int) -> int:
+    async def _gf_mul(x: int, y: int) -> int:
         R = 0xE1000000000000000000000000000000
         z = 0
         v = x
@@ -101,10 +113,10 @@ class AesGcmCipher:
                 v = (v >> 1) ^ R
             else:
                 v >>= 1
-            utils._yield(i + 1, every=32, do_gc=False)
+            await AesGcmCipher._ayield(i + 1, every=32, do_gc=False)
         return z
 
-    def _ghash(self, H: bytes, associated_data: bytes, ciphertext: bytes) -> bytes:
+    async def _ghash(self, H: bytes, associated_data: bytes, ciphertext: bytes) -> bytes:
         h = self._from_bytes(H)
         y = 0
 
@@ -112,24 +124,24 @@ class AesGcmCipher:
             aad_padded = self._pad16(associated_data)
             for i in range(0, len(aad_padded), 16):
                 y ^= self._from_bytes(aad_padded[i : i + 16])
-                y = self._gf_mul(y, h)
-                utils._yield((i // 16) + 1, every=32, do_gc=False)
+                y = await self._gf_mul(y, h)
+                await self._ayield((i // 16) + 1, every=32, do_gc=False)
 
         if ciphertext:
             c_padded = self._pad16(ciphertext)
             for i in range(0, len(c_padded), 16):
                 y ^= self._from_bytes(c_padded[i : i + 16])
-                y = self._gf_mul(y, h)
-                utils._yield((i // 16) + 1, every=32, do_gc=False)
+                y = await self._gf_mul(y, h)
+                await self._ayield((i // 16) + 1, every=32, do_gc=False)
 
         aad_bits = (len(associated_data) if associated_data else 0) * 8
         c_bits = len(ciphertext) * 8
         len_block = self._to_bytes(aad_bits, 8) + self._to_bytes(c_bits, 8)
         y ^= self._from_bytes(len_block)
-        y = self._gf_mul(y, h)
+        y = await self._gf_mul(y, h)
         return self._to_bytes(y, 16)
 
-    def _aes_gcm_encrypt(self, plaintext: bytes, nonce: bytes, key: bytes) -> tuple:
+    async def _aes_gcm_encrypt(self, plaintext: bytes, nonce: bytes, key: bytes) -> tuple:
         ecb = _cryptolib.aes(key, 1)
         H = self._aes_ecb_encrypt_block(b"\x00" * 16, ecb)
 
@@ -148,13 +160,13 @@ class AesGcmCipher:
             ciphertext[i : i + len(block)] = ct_block
             i += len(block)
             counter = self._inc32(counter)
-            utils._yield(i // 16, every=32, do_gc=False)
+            await self._ayield(i // 16, every=32, do_gc=False)
 
-        S = self._ghash(H, b"", bytes(ciphertext))
+        S = await self._ghash(H, b"", bytes(ciphertext))
         tag = self._xor_bytes(self._aes_ecb_encrypt_block(J0, ecb), S)
         return bytes(ciphertext), tag
 
-    def _aes_gcm_decrypt(self, ciphertext: bytes, tag: bytes, nonce: bytes, key: bytes) -> bytes:
+    async def _aes_gcm_decrypt(self, ciphertext: bytes, tag: bytes, nonce: bytes, key: bytes) -> bytes:
         if len(tag) != 16:
             raise ValueError("Invalid tag size")
         if len(nonce) != 12:
@@ -164,7 +176,7 @@ class AesGcmCipher:
         H = self._aes_ecb_encrypt_block(b"\x00" * 16, ecb)
         J0 = nonce + b"\x00\x00\x00\x01"
 
-        S = self._ghash(H, b"", ciphertext)
+        S = await self._ghash(H, b"", ciphertext)
         expected_tag = self._xor_bytes(self._aes_ecb_encrypt_block(J0, ecb), S)
 
         mismatch = 0
@@ -184,7 +196,7 @@ class AesGcmCipher:
             plaintext[i : i + len(block)] = pt_block
             i += len(block)
             counter = self._inc32(counter)
-            utils._yield(i // 16, every=32, do_gc=False)
+            await self._ayield(i // 16, every=32, do_gc=False)
 
         return bytes(plaintext)
 

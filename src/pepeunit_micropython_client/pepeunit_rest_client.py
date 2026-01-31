@@ -1,6 +1,11 @@
 import gc
 import ujson as json
-import mrequests
+try:
+    import uasyncio as asyncio  # MicroPython
+except ImportError:  # CPython
+    import asyncio
+
+from .async_http import request
 
 
 class PepeunitRestClient:
@@ -22,64 +27,61 @@ class PepeunitRestClient:
             + self.settings.PU_API_ACTUAL_PREFIX
         )
 
-    def _download_file(self, url, headers, file_path):
-        r = mrequests.get(url=url, headers=headers)
-
-        if r.status_code == 200:
-            r.save(file_path, buf=bytearray(256))
-        elif  r.status_code >= 400:
-            raise OSError('HTTP error ' + str(r.status_code))
-        r.close()
+    async def _download_file(self, url, headers, file_path):
+        status, _, _ = await request("GET", url, headers=headers, save_to=file_path, bufsize=256)
+        if status >= 400:
+            raise OSError("HTTP error {}".format(status))
         gc.collect()
 
 
-    def download_update(self, file_path):
+    async def download_update(self, file_path):
         url = self._get_base_url() + '/units/firmware/tgz/' + self.settings.unit_uuid + '?wbits=9&level=9'
         headers = self._get_auth_headers()
         
-        self._download_file(url, headers, file_path)
+        await self._download_file(url, headers, file_path)
 
-    def download_env(self, file_path):
+    async def download_env(self, file_path):
         url = self._get_base_url() + '/units/env/' + self.settings.unit_uuid
         headers = self._get_auth_headers()
-        self._download_file(url, headers, file_path)
+        await self._download_file(url, headers, file_path)
         # Avoid JSON load/dump pass: it can spike RAM on low-memory boards.
         gc.collect()
 
-    def download_schema(self, file_path):
+    async def download_schema(self, file_path):
         url = self._get_base_url() + '/units/get_current_schema/' + self.settings.unit_uuid
         headers = self._get_auth_headers()
 
-        self._download_file(url, headers, file_path)
+        await self._download_file(url, headers, file_path)
         # Avoid JSON load/dump pass: it can spike RAM on low-memory boards.
         gc.collect()
 
-    def set_state_storage(self, state):
+    async def set_state_storage(self, state):
         url = self._get_base_url() + '/units/set_state_storage/' + self.settings.unit_uuid
         headers = self._get_auth_headers()
         headers['content-type'] = 'application/json'
 
-        r = mrequests.post(url, headers=headers, data=json.dumps({'state': state}))
-        if r.status_code >= 400:
-            raise OSError('HTTP error ' + str(r.status_code))
-        r.close()
+        payload = json.dumps({'state': state})
+        status, _, _ = await request("POST", url, headers=headers, body=payload, max_body=2048)
+        if status >= 400:
+            raise OSError("HTTP error {}".format(status))
         gc.collect()
         
 
-    def get_state_storage(self):
+    async def get_state_storage(self):
         url = self._get_base_url() + '/units/get_state_storage/' + self.settings.unit_uuid
         headers = self._get_auth_headers()
 
-        r = mrequests.get(url, headers=headers)
-        if r.status_code >= 400:
-            raise OSError('HTTP error ' + str(r.status_code))
-        data = r.text
-        r.close()
+        status, _, body = await request("GET", url, headers=headers, max_body=4096)
+        if status >= 400:
+            raise OSError("HTTP error {}".format(status))
         gc.collect()
 
-        return data
+        try:
+            return body.decode("utf-8") if isinstance(body, (bytes, bytearray)) else body
+        except Exception:
+            return body
 
-    def get_input_by_output(self, topic, limit=10, offset=0):
+    async def get_input_by_output(self, topic, limit=10, offset=0):
         uuid = topic.split('/')[1]
 
         base_url = self._get_base_url() + '/unit_nodes'
@@ -94,17 +96,15 @@ class PepeunitRestClient:
         query = '&'.join(['{}={}'.format(k, v) for (k, v) in params])
         url = base_url + '?' + query
 
-        r = mrequests.get(url=url, headers=headers)
-        if r.status_code >= 400:
-            raise OSError('HTTP error ' + str(r.status_code))
-        
-        data = json.loads(r.text)
-        
-        r.close()
+        status, _, body = await request("GET", url, headers=headers, max_body=16_000)
+        if status >= 400:
+            raise OSError("HTTP error {}".format(status))
+
+        data = json.loads(body)
         gc.collect()
         return data
 
-    def get_units_by_nodes(self, unit_node_uuids, limit=10, offset=0):
+    async def get_units_by_nodes(self, unit_node_uuids, limit=10, offset=0):
         if not unit_node_uuids:
             return {'count': 0, 'units': []}
 
@@ -125,13 +125,11 @@ class PepeunitRestClient:
         query = '&'.join(['{}={}'.format(k, v) for (k, v) in params])
         url = base_url + '?' + query
 
-        r = mrequests.get(url=url, headers=headers)
-        if r.status_code >= 400:
-            raise OSError('HTTP error ' + str(r.status_code))
+        status, _, body = await request("GET", url, headers=headers, max_body=32_000)
+        if status >= 400:
+            raise OSError("HTTP error {}".format(status))
 
-        data = json.loads(r.text)
-        
-        r.close()
+        data = json.loads(body)
         gc.collect()
         return data
 

@@ -130,9 +130,15 @@ class PepeunitClient:
                     self.logger.info(f'Get base MQTT command: {topic_key}')
 
                     if topic_key == BaseInputTopicType.ENV_UPDATE_PEPEUNIT:
-                        self.download_env(self.env_file_path)
+                        try:
+                            asyncio.create_task(self.download_env_async(self.env_file_path))
+                        except Exception:
+                            pass
                     elif topic_key == BaseInputTopicType.SCHEMA_UPDATE_PEPEUNIT:
-                        self.download_schema(self.schema_file_path)
+                        try:
+                            asyncio.create_task(self.download_schema_async(self.schema_file_path))
+                        except Exception:
+                            pass
                     elif topic_key == BaseInputTopicType.UPDATE_PEPEUNIT:
                         self._handle_update(msg)
                     elif topic_key == BaseInputTopicType.LOG_SYNC_PEPEUNIT:
@@ -142,12 +148,20 @@ class PepeunitClient:
             self.logger.error('Error in base MQTT command: ' + str(e))
 
     def download_env(self, file_path):
-        self.rest_client.download_env(file_path)
+        # Deprecated (sync). Use download_env_async() or schedule it from callbacks.
+        raise NotImplementedError("download_env() is sync; use download_env_async() with uasyncio.")
+
+    def download_schema(self, file_path):
+        # Deprecated (sync). Use download_schema_async() or schedule it from callbacks.
+        raise NotImplementedError("download_schema() is sync; use download_schema_async() with uasyncio.")
+
+    async def download_env_async(self, file_path):
+        await self.rest_client.download_env(file_path)
         self.settings.load_from_file()
         self.logger.info('Success update env')
 
-    def download_schema(self, file_path):
-        self.rest_client.download_schema(file_path)
+    async def download_schema_async(self, file_path):
+        await self.rest_client.download_schema(file_path)
         self.schema.update_from_file()
         self._resubscribe_requested = True
         self.logger.info('Success update schema')
