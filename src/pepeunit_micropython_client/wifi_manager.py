@@ -1,5 +1,6 @@
 import time
 import network
+import uasyncio as asyncio
 
 import utils
 
@@ -49,7 +50,7 @@ class WifiManager:
                 pass
         return ""
 
-    def _force_sta_reset(self):
+    async def _force_sta_reset(self):
         self.logger.info("WiFi station prepare", file_only=True)
         sta = self.get_sta()
         try:
@@ -60,7 +61,7 @@ class WifiManager:
             sta.active(False)
         except Exception:
             pass
-        time.sleep_ms(200)
+        await asyncio.sleep_ms(200)
         try:
             sta.active(True)
         except Exception:
@@ -69,9 +70,9 @@ class WifiManager:
             sta.config(reconnects=0)
         except Exception:
             pass
-        time.sleep_ms(200)
+        await asyncio.sleep_ms(200)
 
-    def scan_has_target_ssid(self):
+    async def scan_has_target_ssid(self):
         sta = self.get_sta()
         self.logger.info("WiFi run scan existing ssid`s", file_only=True)
         scan = sta.scan()
@@ -80,10 +81,10 @@ class WifiManager:
             ap_ssid = self._decode_ssid(ap_ssid)
             if ap_ssid == self.settings.PUC_WIFI_SSID:
                 return True
-            utils._yield(idx, every=8, do_gc=False)
+            await utils.ayield(idx, every=8, do_gc=False)
         return False
 
-    def connect_once(self, timeout_ms=10000):
+    async def connect_once(self, timeout_ms=10000):
         sta = self.get_sta()
 
         if sta.isconnected():
@@ -96,9 +97,9 @@ class WifiManager:
                 ),
                 file_only=True
             )
-            self._force_sta_reset()
+            await self._force_sta_reset()
 
-        self._force_sta_reset()
+        await self._force_sta_reset()
 
         self.logger.warning("Attempting connect to WiFi", file_only=True)
         sta.connect(str(self.settings.PUC_WIFI_SSID), str(self.settings.PUC_WIFI_PASS))
@@ -107,11 +108,11 @@ class WifiManager:
         while not sta.isconnected():
             if time.ticks_diff(time.ticks_ms(), started) >= int(timeout_ms):
                 return False
-            time.sleep_ms(200)
+            await asyncio.sleep_ms(200)
 
         return True
 
-    def connect_forever(self, connect_timeout_ms=10000):
+    async def connect_forever(self, connect_timeout_ms=10000):
         attempt = 0
         while True:
             if self.is_connected():
@@ -123,7 +124,7 @@ class WifiManager:
                         ),
                         file_only=True
                     )
-                    self._force_sta_reset()
+                    await self._force_sta_reset()
                     attempt += 1
                     continue
                 try:
@@ -135,23 +136,27 @@ class WifiManager:
             wait_ms = self._reconnection_interval_ms(attempt)
 
             try:
-                if self.scan_has_target_ssid():
-                    ok = self.connect_once(timeout_ms=connect_timeout_ms)
+                found = await self.scan_has_target_ssid()
+                if found:
+                    ok = await self.connect_once(timeout_ms=connect_timeout_ms)
                     if ok:
                         continue
                     self.logger.warning("WiFi connect timeout, next try in {} ms".format(wait_ms), file_only=True)
                 else:
-                    self.logger.warning('WiFi ssid "{}" not found, next scan in {} ms'.format(self.settings.PUC_WIFI_SSID, wait_ms), file_only=True)
+                    self.logger.warning(
+                        'WiFi ssid "{}" not found, next scan in {} ms'.format(self.settings.PUC_WIFI_SSID, wait_ms),
+                        file_only=True
+                    )
             except Exception as e:
                 self.logger.error("WiFi error: {}, next try in {} ms".format(str(e), wait_ms), file_only=True)
 
             if wait_ms > 0:
-                time.sleep_ms(wait_ms)
+                await asyncio.sleep_ms(int(wait_ms))
             attempt += 1
 
-    def ensure_connected(self):
+    async def ensure_connected(self, connect_timeout_ms=10000):
         if not self.is_connected():
-            return self.connect_forever()
+            return await self.connect_forever(connect_timeout_ms=connect_timeout_ms)
         return True
 
     def _reconnection_interval_ms(self, attempt):

@@ -50,3 +50,4 @@ class BaseOutputTopicType:
 class RestartMode:
     RESTART_EXEC = 'restart_exec'
     NO_RESTART = 'no_restart'
+

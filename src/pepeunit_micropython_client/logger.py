@@ -4,10 +4,7 @@ import gc
 from .enums import LogLevel, BaseOutputTopicType
 from .file_manager import FileManager
 
-try:
-    import uasyncio as asyncio  # MicroPython
-except ImportError:  # CPython
-    import asyncio
+import uasyncio as asyncio
 
 
 class Logger:
@@ -38,7 +35,6 @@ class Logger:
         if self.ff_console_log_enable:
             print(log_entry)
 
-        # File writes are async-only: schedule append.
         try:
             asyncio.create_task(
                 FileManager.append_ndjson_with_limit(self.log_file_path, log_entry, self.settings.PU_MAX_LOG_LENGTH)
@@ -48,8 +44,6 @@ class Logger:
         if not file_only and self.mqtt_client and BaseOutputTopicType.LOG_PEPEUNIT in self.schema_manager.output_base_topic:
             topic = self.schema_manager.output_base_topic[BaseOutputTopicType.LOG_PEPEUNIT][0]
             try:
-                # MQTT publish is async (mqtt_as). We can't await here, so schedule.
-                # Low-RAM safety: don't create tasks unless MQTT is actually connected.
                 if gc.mem_free() < getattr(self.settings, "PU_LOG_MQTT_MIN_FREE", 8000):
                     return
                 cli = getattr(self.mqtt_client, "_client", None)
@@ -82,7 +76,6 @@ class Logger:
             pass
 
     def iter_log(self):
-        # Kept as sync generator without FileManager dependency.
         try:
             with open(self.log_file_path, "r") as f:
                 for line in f:

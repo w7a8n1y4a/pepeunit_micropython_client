@@ -1,9 +1,10 @@
 import gc
-import time
+import uasyncio as asyncio
 
 
-def _yield(counter, every=32, mem_free_threshold=8000, do_gc=True):
-    if counter % every == 0:
-        if do_gc and gc.mem_free() < mem_free_threshold:
-            gc.collect()
-        time.sleep_ms(0)
+async def ayield(counter, every=32, mem_free_threshold=8000, do_gc=True):
+    if counter % every != 0:
+        return
+    if do_gc and gc.mem_free() < mem_free_threshold:
+        gc.collect()
+    await asyncio.sleep_ms(0)

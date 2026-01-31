@@ -1,9 +1,6 @@
 import gc
 import ujson as json
-try:
-    import uasyncio as asyncio  # MicroPython
-except ImportError:  # CPython
-    import asyncio
+import uasyncio as asyncio
 
 from .async_http import request
 
@@ -37,14 +34,12 @@ class PepeunitRestClient:
     async def download_update(self, file_path):
         url = self._get_base_url() + '/units/firmware/tgz/' + self.settings.unit_uuid + '?wbits=9&level=9'
         headers = self._get_auth_headers()
-        
         await self._download_file(url, headers, file_path)
 
     async def download_env(self, file_path):
         url = self._get_base_url() + '/units/env/' + self.settings.unit_uuid
         headers = self._get_auth_headers()
         await self._download_file(url, headers, file_path)
-        # Avoid JSON load/dump pass: it can spike RAM on low-memory boards.
         gc.collect()
 
     async def download_schema(self, file_path):
@@ -52,7 +47,6 @@ class PepeunitRestClient:
         headers = self._get_auth_headers()
 
         await self._download_file(url, headers, file_path)
-        # Avoid JSON load/dump pass: it can spike RAM on low-memory boards.
         gc.collect()
 
     async def set_state_storage(self, state):
@@ -65,7 +59,6 @@ class PepeunitRestClient:
         if status >= 400:
             raise OSError("HTTP error {}".format(status))
         gc.collect()
-        
 
     async def get_state_storage(self):
         url = self._get_base_url() + '/units/get_state_storage/' + self.settings.unit_uuid

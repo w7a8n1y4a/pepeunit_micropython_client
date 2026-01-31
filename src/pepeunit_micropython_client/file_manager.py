@@ -3,15 +3,9 @@ import os
 import gc
 from shutil import shutil as shutil
 
-try:
-    import uasyncio as asyncio  # MicroPython
-except ImportError:  # CPython
-    import asyncio
+import uasyncio as asyncio
 
 class FileManager:
-    # -----------------------
-    # Internal helpers (async)
-    # -----------------------
     @staticmethod
     async def _ayield(counter, every=32, mem_free_threshold=8000, do_gc=True):
         if counter % every == 0:
@@ -51,10 +45,10 @@ class FileManager:
 
     @staticmethod
     async def write_json(file_path, data, *, yield_every=32):
-        # VFS operations are blocking, but chunking and yielding reduces long loop stalls.
+
         dirpath = file_path[: file_path.rfind('/')] if '/' in file_path else ''
         await FileManager._ensure_dir(dirpath, yield_every=yield_every)
-        # json.dump writes in chunks internally; we just yield once after dump.
+
         with open(file_path, 'w') as f:
             json.dump(data, f)
         await FileManager._ayield(0, every=1, do_gc=True)
@@ -69,10 +63,7 @@ class FileManager:
 
     @staticmethod
     async def append_ndjson_with_limit(file_path, item, max_lines, *, yield_every=32):
-        """
-        Async-friendly NDJSON append + trim.
-        Note: FS writes are still blocking, but we yield between phases and while trimming.
-        """
+
         dirpath = file_path[: file_path.rfind('/')] if '/' in file_path else ''
         await FileManager._ensure_dir(dirpath, yield_every=yield_every)
         try:
@@ -84,7 +75,7 @@ class FileManager:
                         ch = c
                         break
             if ch == '[':
-                # Low-RAM safety: drop legacy JSON-array format.
+
                 try:
                     with open(file_path, 'w') as fw:
                         pass
@@ -105,10 +96,7 @@ class FileManager:
 
     @staticmethod
     async def iter_lines_bytes_cb(file_path, on_line, *, yield_every=32):
-        """
-        Async-friendly line iteration without async generators (more compatible across ports).
-        `on_line(line: bytes)` can be sync or async.
-        """
+
         try:
             with open(file_path, 'rb') as f:
                 idx = 0
@@ -168,9 +156,7 @@ class FileManager:
 
     @staticmethod
     async def extract_tar_gz(tgz_path, dest_root, *, copy_chunk=256, yield_every=16):
-        """
-        Async-friendly tgz extraction. Still uses blocking FS, but yields between files.
-        """
+
         import tarfile
         import deflate
 
@@ -203,3 +189,4 @@ class FileManager:
 
         gc.collect()
         await asyncio.sleep_ms(0)
+

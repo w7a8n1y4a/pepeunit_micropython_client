@@ -1,10 +1,7 @@
 import os
 import ubinascii as binascii
 
-try:
-    import uasyncio as asyncio  # MicroPython
-except ImportError:  # CPython
-    import asyncio
+import uasyncio as asyncio
 
 import gc
 
@@ -24,7 +21,7 @@ class AesGcmCipher:
         if len(key) not in (16, 24, 32):
             raise ValueError("AES key must be 16, 24, or 32 bytes after base64 decoding")
         return key
-    
+
     async def aes_gcm_encode(self, data: str, key: str) -> str:
         plaintext = data.encode("utf-8")
         nonce = os.urandom(12)
@@ -199,5 +196,3 @@ class AesGcmCipher:
             await self._ayield(i // 16, every=32, do_gc=False)
 
         return bytes(plaintext)
-
-

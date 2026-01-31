@@ -18,24 +18,23 @@ It shows how to:
 
 import time
 import gc
+import uasyncio as asyncio
 
 from pepeunit_micropython_client.client import PepeunitClient
 from pepeunit_micropython_client.enums import SearchTopicType, SearchScope
 from pepeunit_micropython_client.cipher import AesGcmCipher
     
 last_output_send_time = 0
-_last_diag_ms = 0
-_pub_attempts = 0
 
 async def output_handler(client: PepeunitClient):
     global last_output_send_time
     current_time = client.time_manager.get_epoch_ms()
     
     if (current_time - last_output_send_time) / 1000 >= client.settings.DELAY_PUB_MSG:
+        gc.collect()
         message = str(time.ticks_ms())
-        #print('free mem:', gc.mem_free())
         
-        #client.logger.debug(f"Send to output/pepeunit: {message}", file_only=True)
+        client.logger.debug(f"Send to output/pepeunit: {message}", file_only=True)
         
         await client.publish_to_topics("output/pepeunit", message)
         
@@ -46,7 +45,8 @@ async def input_handler(client: PepeunitClient, msg):
     try:
         topic_parts = msg.topic.split("/")
         if len(topic_parts) == 3:
-            topic_name = client.schema.find_topic_by_unit_node(
+            gc.collect()
+            topic_name = await client.schema.find_topic_by_unit_node(
                 msg.topic, SearchTopicType.FULL_NAME, SearchScope.INPUT
             )
 
@@ -55,7 +55,7 @@ async def input_handler(client: PepeunitClient, msg):
                 try:
                     value = int(value)
                     print('time', time.ticks_ms(), 'free mem:', gc.mem_free())
-                    #client.logger.debug(f"Get from input/pepeunit: {value}", file_only=True)
+                    client.logger.debug(f"Get from input/pepeunit: {value}", file_only=True)
 
                 except ValueError:
                     client.logger.error(f"Value is not a number: {value}")
@@ -80,13 +80,18 @@ async def test_get_units(client: PepeunitClient):
     try:
         output_topic_urls = client.schema.output_topic.get('output/pepeunit', [])
         if output_topic_urls:
-            unit_nodes_response = await client.rest_client.get_input_by_output(output_topic_urls[0])
+            unit_nodes_response = await client.rest_client.get_input_by_output(output_topic_urls[0], limit=1, offset=0)
             client.logger.info("Found {} unit nodes".format(unit_nodes_response.get('count', 0)))
             
-            unit_node_uuids = [item.get('uuid')for item in unit_nodes_response.get('unit_nodes', [])]
+            unit_node_uuids = []
+            for item in unit_nodes_response.get('unit_nodes', []) or ():
+                uuid = item.get('uuid')
+                if uuid:
+                    unit_node_uuids.append(uuid)
+                    break
             
             if unit_node_uuids:
-                units_response = await client.rest_client.get_units_by_nodes(unit_node_uuids)
+                units_response = await client.rest_client.get_units_by_nodes(unit_node_uuids, limit=1, offset=0)
                 client.logger.info("Found {} units".format(units_response.get('count', 0)))
                 
                 for unit in units_response.get('units', []):
@@ -109,6 +114,9 @@ async def test_cipher(client: PepeunitClient):
 
 
 async def main_async(client: PepeunitClient):
+    await client.wifi_manager.ensure_connected()
+    await client.time_manager.sync_epoch_ms_from_ntp()
+
     await test_set_get_storage(client)
     await test_get_units(client)
     await test_cipher(client)
@@ -116,42 +124,15 @@ async def main_async(client: PepeunitClient):
     client.set_mqtt_input_handler(input_handler)
     await client.mqtt_client.connect()
     await client.mqtt_client.subscribe_all_schema_topics()
-    client.logger.info("Subscribed to schema topics")
-    try:
-        client.logger.info(
-            "MQTT output topics for output/pepeunit: {}".format(client.schema.output_topic.get("output/pepeunit")),
-            file_only=True,
-        )
-    except Exception:
-        pass
     client.set_output_handler(output_handler)
-    client.logger.info("Starting main cycle")
-    await client.run_main_cycle_async()
+    await client.run_main_cycle()
 
 
 if __name__ == '__main__':
     try:
-        try:
-            import uasyncio as asyncio
-        except ImportError:
-            import asyncio
-
-        # MicroPython: `client` is typically created by `boot.py`.
-        client_obj = globals().get("client", None)
-        if client_obj is None:
-            raise RuntimeError("`client` is not defined. Create it in boot.py (see example/boot.py).")
-
-        try:
-            asyncio.run(main_async(client_obj))
-        except AttributeError:
-            # Older uasyncio
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(main_async(client_obj))
+        asyncio.run(main_async(client))
     except KeyboardInterrupt:
         raise
     except Exception as e:
-        try:
-            client_obj.logger.critical(f"Error with reset: {str(e)}", file_only=True)
-            client_obj.restart_device()
-        except Exception:
-            raise
+        client.logger.critical(f"Error with reset: {str(e)}", file_only=True)
+        client.restart_device()

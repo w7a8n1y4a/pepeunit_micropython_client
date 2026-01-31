@@ -1,18 +1,15 @@
-try:
-    import uasyncio as asyncio  # MicroPython
-except ImportError:  # CPython
-    import asyncio
+import uasyncio as asyncio
 
 import socket
 import gc
 
 try:
-    import ussl as ssl  # MicroPython
+    import ussl as ssl
 except ImportError:
     try:
-        import ssl  # type: ignore
+        import ssl
     except ImportError:
-        ssl = None  # noqa
+        ssl = None
 
 try:
     from sys import platform
@@ -37,7 +34,7 @@ else:
 
 
 def _parse_url(url: str):
-    # Minimal URL parser: scheme://host[:port]/path?query
+
     scheme = "http"
     rest = url
     if "://" in url:
@@ -124,16 +121,26 @@ async def _read_headers(sock):
 
 
 async def request(method, url, headers=None, body=None, *, save_to=None, bufsize=256, max_body=64_000):
-    """
-    Minimal async HTTP/HTTPS request.
-    - If save_to is set, streams body to file and returns (status, headers, None)
-    - Else reads body up to max_body and returns (status, headers, bytes_body)
-    """
+
     headers = headers or {}
     scheme, host, port, path = _parse_url(url)
     use_ssl = scheme == "https"
 
-    addr = socket.getaddrinfo(host, port)[0][-1]
+    # On first boot, Wi-Fi can be "connected" but DNS is not ready yet.
+    # MicroPython then raises OSError(-2) from getaddrinfo (EAI_NONAME).
+    # Retrying here makes first REST calls resilient.
+    addr = None
+    for attempt in range(4):
+        try:
+            addr = socket.getaddrinfo(host, port)[0][-1]
+            break
+        except OSError as e:
+            if e.args and e.args[0] == -2 and attempt < 3:
+                gc.collect()
+                await asyncio.sleep_ms(200 * (attempt + 1))
+                continue
+            raise
+
     s = socket.socket()
     s.setblocking(False)
     try:
@@ -148,7 +155,7 @@ async def request(method, url, headers=None, body=None, *, save_to=None, bufsize
                 raise OSError("SSL not available")
             s = ssl.wrap_socket(s, server_hostname=host)
 
-        # Build request
+
         lines = [
             "{} {} HTTP/1.1".format(method, path),
             "Host: {}".format(host),
@@ -163,18 +170,18 @@ async def request(method, url, headers=None, body=None, *, save_to=None, bufsize
             else:
                 b = str(body).encode("utf-8")
             lines.append("Content-Length: {}".format(len(b)))
-        lines.append("")  # end headers
+        lines.append("")
         lines.append("")
         req = "\r\n".join(lines).encode("utf-8") + b
         await _as_write(s, req)
 
-        # Status line
+
         status_line = await _readline(s, limit=2048)
         parts = status_line.split()
         status = int(parts[1]) if len(parts) >= 2 else 0
         resp_headers = await _read_headers(s)
 
-        # Body
+
         if save_to:
             with open(save_to, "wb") as f:
                 while True:
@@ -219,5 +226,4 @@ async def request(method, url, headers=None, body=None, *, save_to=None, bufsize
             s.close()
         except Exception:
             pass
-
 
