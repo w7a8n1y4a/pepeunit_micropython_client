@@ -45,6 +45,10 @@ async def eliza(*_):
     await asyncio.sleep_ms(0)
 
 
+def _noop(*_):
+    return None
+
+
 class MsgQueue:
     def __init__(self, size):
         self._q = [0 for _ in range(max(size, 4))]
@@ -72,31 +76,6 @@ class MsgQueue:
         r = self._q[self._ri]
         self._ri = (self._ri + 1) % self._size
         return r
-
-
-config = {
-    "client_id": hexlify(unique_id()),
-    "server": None,
-    "port": 0,
-    "user": "",
-    "password": "",
-    "keepalive": 60,
-    "ping_interval": 0,
-    "ssl": False,
-    "ssl_params": {},
-    "response_time": 10,
-    "clean_init": True,
-    "clean": True,
-    "max_repubs": 4,
-    "will": None,
-    "subs_cb": lambda *_: None,
-    "wifi_coro": eliza,
-    "connect_coro": eliza,
-    "ssid": None,
-    "wifi_pw": None,
-    "queue_len": 0,
-    "gateway": False,
-}
 
 
 class MQTTException(Exception):
@@ -129,51 +108,121 @@ decode_properties = None
 class MQTT_base:
     REPUB_COUNT = 0
     DEBUG = False
+    __slots__ = (
+        "_cb",
+        "_clean",
+        "_clean_init",
+        "_client_id",
+        "_connect_handler",
+        "_espnow",
+        "_events",
+        "_gateway",
+        "_gateway_inited",
+        "_has_connected",
+        "_ibuf",
+        "_keepalive",
+        "_lw_msg",
+        "_lw_qos",
+        "_lw_retain",
+        "_lw_topic",
+        "_max_repubs",
+        "_mvbuf",
+        "_pswd",
+        "_response_time",
+        "_sock",
+        "_ssid",
+        "_ssl",
+        "_ssl_params",
+        "_sta_if",
+        "_user",
+        "_wifi_handler",
+        "_wifi_pw",
+        "down",
+        "last_rx",
+        "lock",
+        "newpid",
+        "port",
+        "queue",
+        "rcv_pids",
+        "server",
+        "topic_alias_maximum",
+        "up",
+    )
 
-    def __init__(self, config):
-        self._events = config["queue_len"] > 0
-        self._client_id = config["client_id"]
-        self._user = config["user"]
-        self._pswd = config["password"]
-        self._keepalive = config["keepalive"]
+    def __init__(
+        self,
+        *,
+        client_id=None,
+        server=None,
+        port=0,
+        user="",
+        password="",
+        keepalive=60,
+        ping_interval=0,
+        ssl=False,
+        ssl_params=None,
+        response_time=10,
+        clean_init=True,
+        clean=True,
+        max_repubs=4,
+        will=None,
+        subs_cb=None,
+        wifi_coro=eliza,
+        connect_coro=eliza,
+        ssid=None,
+        wifi_pw=None,
+        queue_len=0,
+        gateway=False,
+    ):
+        if client_id is None:
+            client_id = hexlify(unique_id())
+        if ssl_params is None:
+            ssl_params = {}
+        if subs_cb is None:
+            subs_cb = _noop
+
+        self._events = queue_len > 0
+        self._client_id = client_id
+        self._user = user
+        self._pswd = password
+        self._keepalive = keepalive
         if self._keepalive >= 65536:
             raise ValueError("invalid keepalive time")
-        self._response_time = config["response_time"] * 1000
-        self._max_repubs = config["max_repubs"]
-        self._clean_init = config["clean_init"]
-        self._clean = config["clean"]
-        will = config["will"]
+        self._response_time = response_time * 1000
+        self._max_repubs = max_repubs
+        self._clean_init = clean_init
+        self._clean = clean
         if will is None:
             self._lw_topic = False
         else:
             self._set_last_will(*will)
 
-        self._ssid = config["ssid"]
-        self._wifi_pw = config["wifi_pw"]
-        self._ssl = config["ssl"]
-        self._ssl_params = config["ssl_params"]
+        self._ssid = ssid
+        self._wifi_pw = wifi_pw
+        self._ssl = ssl
+        self._ssl_params = ssl_params
 
         if self._events:
             self.up = asyncio.Event()
             self.down = asyncio.Event()
-            self.queue = MsgQueue(config["queue_len"])
+            self.queue = MsgQueue(queue_len)
             self._cb = self.queue.put
         else:
-            self._cb = config["subs_cb"]
-            self._wifi_handler = config["wifi_coro"]
-            self._connect_handler = config["connect_coro"]
+            self._cb = subs_cb
+            self._wifi_handler = wifi_coro
+            self._connect_handler = connect_coro
 
-        self.port = config["port"]
+        self.port = port
         if self.port == 0:
             self.port = 8883 if self._ssl else 1883
-        self.server = config["server"]
+        self.server = server
         if self.server is None:
             raise ValueError("no server specified.")
         self._sock = None
         self._sta_if = network.WLAN(network.STA_IF)
         self._sta_if.active(True)
 
-        self._gateway = bool(config.get("gateway", False))
+        self._gateway = bool(gateway)
         self._gateway_inited = False
         self._espnow = None
 
@@ -572,12 +621,58 @@ class MQTT_base:
 
 
 class MQTTClient(MQTT_base):
-    def __init__(self, config):
-        super().__init__(config)
+    def __init__(
+        self,
+        *,
+        client_id=None,
+        server=None,
+        port=0,
+        user="",
+        password="",
+        keepalive=60,
+        ping_interval=0,
+        ssl=False,
+        ssl_params=None,
+        response_time=10,
+        clean_init=True,
+        clean=True,
+        max_repubs=4,
+        will=None,
+        subs_cb=None,
+        wifi_coro=eliza,
+        connect_coro=eliza,
+        ssid=None,
+        wifi_pw=None,
+        queue_len=0,
+        gateway=False,
+    ):
+        super().__init__(
+            client_id=client_id,
+            server=server,
+            port=port,
+            user=user,
+            password=password,
+            keepalive=keepalive,
+            ping_interval=ping_interval,
+            ssl=ssl,
+            ssl_params=ssl_params,
+            response_time=response_time,
+            clean_init=clean_init,
+            clean=clean,
+            max_repubs=max_repubs,
+            will=will,
+            subs_cb=subs_cb,
+            wifi_coro=wifi_coro,
+            connect_coro=connect_coro,
+            ssid=ssid,
+            wifi_pw=wifi_pw,
+            queue_len=queue_len,
+            gateway=gateway,
+        )
         self._isconnected = False
         keepalive = 1000 * self._keepalive
         self._ping_interval = keepalive // 4 if keepalive else 20000
-        p_i = config["ping_interval"] * 1000
+        p_i = ping_interval * 1000
         if p_i and p_i < self._ping_interval:
             self._ping_interval = p_i
         self._in_connect = False

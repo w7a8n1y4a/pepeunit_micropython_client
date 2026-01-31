@@ -1,6 +1,6 @@
 import uasyncio as asyncio
 
-from mqtt_as import MQTTClient, config as mqtt_as_config
+from mqtt_as import MQTTClient
 
 
 class _Msg:
@@ -45,20 +45,19 @@ class PepeunitMqttAsClient:
         self._input_handler = handler
 
     async def connect(self):
-        cfg = mqtt_as_config.copy()
-        cfg["server"] = self.settings.PU_MQTT_HOST
-        cfg["port"] = self.settings.PU_MQTT_PORT
-        cfg["user"] = self._to_bytes(self.settings.PU_AUTH_TOKEN)
-        cfg["password"] = b""
-        cfg["keepalive"] = self.settings.PU_MQTT_KEEPALIVE
-        cfg["ping_interval"] = self.settings.PU_MQTT_PING_INTERVAL
-        cfg["client_id"] = self._to_bytes(self.settings.unit_uuid)
-        cfg["subs_cb"] = self._on_message
-        cfg["ssid"] = getattr(self.settings, "PUC_WIFI_SSID", None) or None
-        cfg["wifi_pw"] = getattr(self.settings, "PUC_WIFI_PASS", None) or None
-        cfg["queue_len"] = 0
-
-        self._client = MQTTClient(cfg)
+        self._client = MQTTClient(
+            server=self.settings.PU_MQTT_HOST,
+            port=self.settings.PU_MQTT_PORT,
+            user=self._to_bytes(self.settings.PU_AUTH_TOKEN),
+            password=b"",
+            keepalive=self.settings.PU_MQTT_KEEPALIVE,
+            ping_interval=self.settings.PU_MQTT_PING_INTERVAL,
+            client_id=self._to_bytes(self.settings.unit_uuid),
+            subs_cb=self._on_message,
+            ssid=getattr(self.settings, "PUC_WIFI_SSID", None) or None,
+            wifi_pw=getattr(self.settings, "PUC_WIFI_PASS", None) or None,
+            queue_len=0,
+        )
         await self._client.connect()
 
         self.logger.info("Connected to MQTT Broker (mqtt_as)")
