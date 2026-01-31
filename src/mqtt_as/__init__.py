@@ -541,34 +541,19 @@ class MQTTClient:
             asyncio.create_task(self._kill_tasks(True))
 
     async def _connection(self):
-        while not self._isconnected:
-            await asyncio.sleep(1)
+        if not self._isconnected:
+            raise OSError(-1, "Not connected")
 
     async def subscribe(self, topic, qos=0, properties=None):
         qos_check(qos)
-        while 1:
-            await self._connection()
-            try:
-                return await self._subscribe_core(topic, qos, properties)
-            except OSError:
-                pass
-            self._reconnect()
+        await self._connection()
+        return await self._subscribe_core(topic, qos, properties)
 
     async def unsubscribe(self, topic, properties=None):
-        while 1:
-            await self._connection()
-            try:
-                return await self._unsubscribe_core(topic, properties)
-            except OSError:
-                pass
-            self._reconnect()
+        await self._connection()
+        return await self._unsubscribe_core(topic, properties)
 
     async def publish(self, topic, msg, retain=False, qos=0, properties=None):
         qos_check(qos)
-        while 1:
-            await self._connection()
-            try:
-                return await self._publish_core(topic, msg, retain, qos, properties)
-            except OSError:
-                pass
-            self._reconnect()
+        await self._connection()
+        return await self._publish_core(topic, msg, retain, qos, properties)

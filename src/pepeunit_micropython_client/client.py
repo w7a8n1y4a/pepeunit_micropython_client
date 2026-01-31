@@ -56,6 +56,7 @@ class PepeunitClient:
             self.wifi_manager = WifiManager(settings=self.settings, logger=self.logger)
         else:
             self.wifi_manager = None
+        self.mqtt_client.set_wifi_manager(self.wifi_manager)
 
         self.mqtt_input_handler = None
         self.mqtt_output_handler = None
@@ -298,14 +299,19 @@ class PepeunitClient:
         self._running = True
         try:
             while self._running:
+                if not self._in_mqtt_callback:
+                    await self.mqtt_client.ensure_connected()
+                    if self.mqtt_client.consume_reconnected():
+                        self._resubscribe_requested = True
                 if self._resubscribe_requested and not self._in_mqtt_callback:
                     try:
 
                         subscribe_all = getattr(self.mqtt_client, "subscribe_all_schema_topics", None)
                         if subscribe_all:
-                            res = subscribe_all()
-                            if res is not None:
-                                await res
+                            if self.mqtt_client.is_connected():
+                                res = subscribe_all()
+                                if res is not None:
+                                    await res
                     finally:
                         self._resubscribe_requested = False
 
