@@ -54,8 +54,6 @@ class PepeunitMqttAsClient:
             ping_interval=self.settings.PU_MQTT_PING_INTERVAL,
             client_id=self._to_bytes(self.settings.unit_uuid),
             subs_cb=self._on_message,
-            ssid=getattr(self.settings, "PUC_WIFI_SSID", None) or None,
-            wifi_pw=getattr(self.settings, "PUC_WIFI_PASS", None) or None,
             queue_len=0,
         )
         await self._client.connect()
