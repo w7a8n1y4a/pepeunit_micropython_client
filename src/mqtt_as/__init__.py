@@ -101,10 +101,11 @@ encode_properties = None
 decode_properties = None
 
 
-class MQTT_base:
+class MQTTClient:
     REPUB_COUNT = 0
     DEBUG = False
     __slots__ = (
+        "_addr",
         "_cb",
         "_clean",
         "_clean_init",
@@ -113,14 +114,18 @@ class MQTT_base:
         "_events",
         "_has_connected",
         "_ibuf",
+        "_in_connect",
         "_keepalive",
         "_max_repubs",
         "_mvbuf",
+        "_ping_interval",
         "_pswd",
         "_response_time",
+        "_isconnected",
         "_sock",
         "_ssl",
         "_ssl_params",
+        "_tasks",
         "_user",
         "down",
         "last_rx",
@@ -146,7 +151,7 @@ class MQTT_base:
         ping_interval=20,
         ssl=False,
         ssl_params=None,
-        response_time=10,
+        response_time=5,
         clean_init=True,
         clean=True,
         max_repubs=4,
@@ -170,6 +175,19 @@ class MQTT_base:
         self._max_repubs = max_repubs
         self._clean_init = clean_init
         self._clean = clean
+        self._isconnected = False
+        keepalive = 1000 * self._keepalive
+        self._ping_interval = keepalive // 4 if keepalive else 20000
+        p_i = ping_interval * 1000
+        if p_i and p_i < self._ping_interval:
+            self._ping_interval = p_i
+        self._in_connect = False
+        self._has_connected = False
+        self._tasks = []
+        if ESP8266:
+            import esp
+
+            esp.sleep_type(0)
         self._ssl = ssl
         self._ssl_params = ssl_params
 
@@ -400,7 +418,7 @@ class MQTT_base:
             return True
         return False
 
-    async def publish(self, topic, msg, retain, qos, properties=None):
+    async def _publish_core(self, topic, msg, retain, qos, properties=None):
         pid = next(self.newpid)
         if qos:
             self.rcv_pids.add(pid)
@@ -438,10 +456,10 @@ class MQTT_base:
 
         await self._as_write(msg)
 
-    async def subscribe(self, topic, qos, properties=None):
+    async def _subscribe_core(self, topic, qos, properties=None):
         await self._usub(topic, qos, properties)
 
-    async def unsubscribe(self, topic, properties=None):
+    async def _unsubscribe_core(self, topic, properties=None):
         await self._usub(topic, None, properties)
 
     async def _usub(self, topic, qos, _properties):
@@ -562,60 +580,6 @@ class MQTT_base:
         elif op & 6 == 4:
             raise OSError(-1, "QoS 2 not supported")
 
-
-class MQTTClient(MQTT_base):
-    def __init__(
-        self,
-        *,
-        client_id=None,
-        server=None,
-        port=0,
-        user="",
-        password="",
-        keepalive=60,
-        ping_interval=20,
-        ssl=False,
-        ssl_params=None,
-        response_time=5,
-        clean_init=True,
-        clean=True,
-        max_repubs=4,
-        subs_cb=None,
-        connect_coro=eliza,
-        queue_len=0,
-    ):
-        super().__init__(
-            client_id=client_id,
-            server=server,
-            port=port,
-            user=user,
-            password=password,
-            keepalive=keepalive,
-            ping_interval=ping_interval,
-            ssl=ssl,
-            ssl_params=ssl_params,
-            response_time=response_time,
-            clean_init=clean_init,
-            clean=clean,
-            max_repubs=max_repubs,
-            subs_cb=subs_cb,
-            connect_coro=connect_coro,
-            queue_len=queue_len,
-        )
-        self._isconnected = False
-        keepalive = 1000 * self._keepalive
-        self._ping_interval = keepalive // 4 if keepalive else 20000
-        p_i = ping_interval * 1000
-        if p_i and p_i < self._ping_interval:
-            self._ping_interval = p_i
-        self._in_connect = False
-        self._has_connected = False
-        self._tasks = []
-        if ESP8266:
-            import esp
-
-            esp.sleep_type(0)
-
     async def connect(self, *, quick=False):
         if not self._has_connected:
             self._addr = socket.getaddrinfo(self.server, self.port)[0][-1]
@@ -718,7 +682,7 @@ class MQTTClient(MQTT_base):
         while 1:
             await self._connection()
             try:
-                return await super().subscribe(topic, qos, properties)
+                return await self._subscribe_core(topic, qos, properties)
             except OSError:
                 pass
             self._reconnect()
@@ -727,7 +691,7 @@ class MQTTClient(MQTT_base):
         while 1:
             await self._connection()
             try:
-                return await super().unsubscribe(topic, properties)
+                return await self._unsubscribe_core(topic, properties)
             except OSError:
                 pass
             self._reconnect()
@@ -737,7 +701,7 @@ class MQTTClient(MQTT_base):
         while 1:
             await self._connection()
             try:
-                return await super().publish(topic, msg, retain, qos, properties)
+                return await self._publish_core(topic, msg, retain, qos, properties)
             except OSError:
                 pass
             self._reconnect()
