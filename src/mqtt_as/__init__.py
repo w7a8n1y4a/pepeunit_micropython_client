@@ -27,39 +27,6 @@ def _noop(*_):
     return None
 
 
-class MsgQueue:
-    def __init__(self, size):
-        self._q = [0 for _ in range(max(size, 4))]
-        self._size = size
-        self._wi = 0
-        self._ri = 0
-        self._evt = asyncio.Event()
-        self.discards = 0
-
-    def put(self, *v):
-        self._q[self._wi] = v
-        self._evt.set()
-        self._wi = (self._wi + 1) % self._size
-        if self._wi == self._ri:
-            self._ri = (self._ri + 1) % self._size
-            self.discards += 1
-
-    def __aiter__(self):
-        return self
-
-    async def __anext__(self):
-        if self._ri == self._wi:
-            self._evt.clear()
-            await self._evt.wait()
-        r = self._q[self._ri]
-        self._ri = (self._ri + 1) % self._size
-        return r
-
-
-class MQTTException(Exception):
-    pass
-
-
 def pid_gen():
     pid = 0
     while True:
@@ -83,10 +50,6 @@ def vbi(buf: bytearray, offs: int, x: int):
         return offs + 1
 
 
-encode_properties = None
-decode_properties = None
-
-
 class MQTTClient:
     REPUB_COUNT = 0
     __slots__ = (
@@ -96,7 +59,6 @@ class MQTTClient:
         "_clean_init",
         "_client_id",
         "_connect_handler",
-        "_events",
         "_has_connected",
         "_ibuf",
         "_in_connect",
@@ -112,16 +74,13 @@ class MQTTClient:
         "_ssl_params",
         "_tasks",
         "_user",
-        "down",
         "last_rx",
         "lock",
         "newpid",
         "port",
-        "queue",
         "rcv_pids",
         "server",
         "topic_alias_maximum",
-        "up",
     )
 
     def __init__(
@@ -142,55 +101,41 @@ class MQTTClient:
         max_repubs=4,
         subs_cb=None,
         connect_coro=eliza,
-        queue_len=0,
     ):
         if ssl_params is None:
             ssl_params = {}
         if subs_cb is None:
             subs_cb = _noop
 
-        self._events = queue_len > 0
         self._client_id = client_id
         self._user = user
         self._pswd = password
         self._keepalive = keepalive
-        if self._keepalive >= 65536:
-            raise ValueError("invalid keepalive time")
         self._response_time = response_time * 1000
         self._max_repubs = max_repubs
         self._clean_init = clean_init
         self._clean = clean
+        self._ping_interval = ping_interval * 1000
+
         self._isconnected = False
-        keepalive = 1000 * self._keepalive
-        self._ping_interval = keepalive // 4 if keepalive else 20000
-        p_i = ping_interval * 1000
-        if p_i and p_i < self._ping_interval:
-            self._ping_interval = p_i
         self._in_connect = False
         self._has_connected = False
         self._tasks = []
+
         if ESP8266:
             import esp
-
             esp.sleep_type(0)
+        
         self._ssl = ssl
         self._ssl_params = ssl_params
 
-        if self._events:
-            self.up = asyncio.Event()
-            self.down = asyncio.Event()
-            self.queue = MsgQueue(queue_len)
-            self._cb = self.queue.put
-        else:
-            self._cb = subs_cb
-            self._connect_handler = connect_coro
+        self._cb = subs_cb
+        self._connect_handler = connect_coro
 
         self.port = port
         if self.port == 0:
             self.port = 8883 if self._ssl else 1883
         self.server = server
-        if self.server is None:
-            raise ValueError("no server specified.")
         self._sock = None
 
         self.newpid = pid_gen()
@@ -333,6 +278,7 @@ class MQTTClient:
 
     async def _ping(self):
         async with self.lock:
+            print("PING")
             await self._as_write(b"\xc0\0")
 
     async def disconnect(self):
@@ -505,7 +451,7 @@ class MQTTClient:
 
         msg = await self._as_read(sz, use_ibuf=sz <= len(self._ibuf))
 
-        if self._events or MSG_BYTES:
+        if MSG_BYTES:
             msg = bytes(msg)
         retained = op & 0x01
         self._cb(topic, msg, bool(retained))
@@ -550,10 +496,7 @@ class MQTTClient:
         asyncio.create_task(self._handle_msg())
 
         self._tasks.append(asyncio.create_task(self._keep_alive()))
-        if self._events:
-            self.up.set()
-        else:
-            asyncio.create_task(self._connect_handler(self))
+        asyncio.create_task(self._connect_handler(self))
 
     async def _handle_msg(self):
         try:
@@ -596,8 +539,6 @@ class MQTTClient:
         if self._isconnected:
             self._isconnected = False
             asyncio.create_task(self._kill_tasks(True))
-            if self._events:
-                self.down.set()
 
     async def _connection(self):
         while not self._isconnected:
@@ -631,4 +572,3 @@ class MQTTClient:
             except OSError:
                 pass
             self._reconnect()
-

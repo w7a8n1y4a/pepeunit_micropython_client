@@ -11,7 +11,7 @@ from .file_manager import FileManager
 from .logger import Logger
 from .schema_manager import SchemaManager
 
-from .pepeunit_mqtt_as_client import PepeunitMqttAsClient
+from .pepeunit_mqtt_client import PepeunitMqttClient
 from .pepeunit_rest_client import PepeunitRestClient
 from .enums import BaseInputTopicType, BaseOutputTopicType, RestartMode
 
@@ -47,7 +47,7 @@ class PepeunitClient:
                 self.time_manager,
                 ff_console_log_enable
             )
-        self.mqtt_client = PepeunitMqttAsClient(self.settings, self.schema, self.logger)
+        self.mqtt_client = PepeunitMqttClient(self.settings, self.schema, self.logger)
         self.logger.mqtt_client = self.mqtt_client
         self.rest_client = PepeunitRestClient(self.settings)
 

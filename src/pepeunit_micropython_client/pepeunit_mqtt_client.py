@@ -7,7 +7,7 @@ class _Msg:
     __slots__ = ("topic", "payload", "retained", "properties")
 
 
-class PepeunitMqttAsClient:
+class PepeunitMqttClient:
     def __init__(self, settings, schema_manager, logger):
         self.settings = settings
         self.schema_manager = schema_manager
@@ -54,7 +54,6 @@ class PepeunitMqttAsClient:
             ping_interval=self.settings.PU_MQTT_PING_INTERVAL,
             client_id=self._to_bytes(self.settings.unit_uuid),
             subs_cb=self._on_message,
-            queue_len=0,
         )
         await self._client.connect()
 
