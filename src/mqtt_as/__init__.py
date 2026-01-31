@@ -103,7 +103,6 @@ decode_properties = None
 
 class MQTTClient:
     REPUB_COUNT = 0
-    DEBUG = False
     __slots__ = (
         "_addr",
         "_cb",
@@ -217,10 +216,6 @@ class MQTTClient:
 
         self.topic_alias_maximum = 0
 
-    def dprint(self, msg, *args):
-        if self.DEBUG:
-            print(msg % args)
-
     def _timeout(self, t):
         return time.ticks_diff(time.ticks_ms(), t) > self._response_time
 
@@ -295,7 +290,6 @@ class MQTTClient:
             if e.args[0] not in BUSY_ERRORS:
                 raise
         await asyncio.sleep_ms(0)
-        self.dprint("Connecting to broker.")
         if self._ssl:
             try:
                 import ssl
@@ -523,8 +517,6 @@ class MQTTClient:
                 puback_props_sz, _ = await self._recv_len()
                 if puback_props_sz > 0:
                     puback_props = await self._as_read(puback_props_sz)
-                    decoded_props = decode_properties(puback_props, puback_props_sz)
-                    self.dprint("PUBACK properties %s", decoded_props)
 
             self.kill_pid(pid, "PUBACK")
 
@@ -596,9 +588,7 @@ class MQTTClient:
                 except OSError:
                     pass
 
-                self.dprint("Waiting for disconnect")
                 await asyncio.sleep(2)
-                self.dprint("About to reconnect with unclean session.")
 
             await self._connect(is_clean)
         except Exception:
@@ -615,8 +605,6 @@ class MQTTClient:
         asyncio.create_task(self._handle_msg())
 
         self._tasks.append(asyncio.create_task(self._keep_alive()))
-        if self.DEBUG:
-            self._tasks.append(asyncio.create_task(self._memory()))
         if self._events:
             self.up.set()
         else:
@@ -637,7 +625,6 @@ class MQTTClient:
         while self.isconnected():
             pings_due = time.ticks_diff(time.ticks_ms(), self.last_rx) // self._ping_interval
             if pings_due >= 4:
-                self.dprint("Reconnect: broker fail.")
                 break
             await asyncio.sleep_ms(self._ping_interval)
             try:
@@ -653,12 +640,6 @@ class MQTTClient:
         await asyncio.sleep_ms(0)
         if kill_skt:
             self._close()
-
-    async def _memory(self):
-        while True:
-            await asyncio.sleep(20)
-            gc.collect()
-            self.dprint("RAM free %d alloc %d", gc.mem_free(), gc.mem_alloc())
 
     def isconnected(self):
         if self._in_connect:
