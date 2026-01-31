@@ -3,6 +3,10 @@ import time
 import gc
 import machine
 import os
+try:
+    import uasyncio as asyncio  # MicroPython
+except ImportError:  # CPython
+    import asyncio
 
 from .time_manager import TimeManager
 from .settings import Settings
@@ -10,7 +14,7 @@ from .file_manager import FileManager
 from .logger import Logger
 from .schema_manager import SchemaManager
 
-from .pepeunit_mqtt_client import PepeunitMqttClient
+from .pepeunit_mqtt_as_client import PepeunitMqttAsClient
 from .pepeunit_rest_client import PepeunitRestClient
 from .enums import BaseInputTopicType, BaseOutputTopicType, RestartMode
 
@@ -46,7 +50,7 @@ class PepeunitClient:
                 self.time_manager,
                 ff_console_log_enable
             )
-        self.mqtt_client = PepeunitMqttClient(self.settings, self.schema, self.logger)
+        self.mqtt_client = PepeunitMqttAsClient(self.settings, self.schema, self.logger)
         self.logger.mqtt_client = self.mqtt_client
         self.rest_client = PepeunitRestClient(self.settings)
 
@@ -67,22 +71,35 @@ class PepeunitClient:
         self._last_mqtt_ping_ms = time.ticks_ms()
 
     def get_system_state(self):
+        # Keep this as small as possible: low-RAM boards can crash on the
+        # temporary allocations caused by building a large dict + json.dumps().
         state = {
-            'millis': self.time_manager.get_epoch_ms(),
-            'mem_free': gc.mem_free(),
-            'mem_alloc': gc.mem_alloc(),
-            'freq': machine.freq(),
-            'statvfs': os.statvfs('/'),
-            'pu_commit_version': self.settings.PU_COMMIT_VERSION
+            "millis": self.time_manager.get_epoch_ms(),
+            "mem_free": gc.mem_free(),
         }
 
-        try:
-            if self.wifi_manager:
-                state['ifconfig'] = self.wifi_manager.get_sta().ifconfig()
-            else:
-                state['ifconfig'] = self.sta.ifconfig()
-        except Exception:
-            pass
+        if getattr(self.settings, "PU_STATE_INCLUDE_MEM_ALLOC", False):
+            state["mem_alloc"] = gc.mem_alloc()
+        if getattr(self.settings, "PU_STATE_INCLUDE_FREQ", False):
+            state["freq"] = machine.freq()
+        if getattr(self.settings, "PU_STATE_INCLUDE_STATVFS", False):
+            # This can be relatively “fat” in JSON.
+            try:
+                state["statvfs"] = os.statvfs("/")
+            except Exception:
+                pass
+        if getattr(self.settings, "PU_STATE_INCLUDE_IFCONFIG", False):
+            try:
+                if self.wifi_manager:
+                    state["ifconfig"] = self.wifi_manager.get_sta().ifconfig()
+                else:
+                    state["ifconfig"] = self.sta.ifconfig()
+            except Exception:
+                pass
+
+        # Keep version behind a flag too: strings increase JSON size and RAM peak.
+        if getattr(self.settings, "PU_STATE_INCLUDE_VERSION", False):
+            state["pu_commit_version"] = self.settings.PU_COMMIT_VERSION
 
         return state
 
@@ -93,7 +110,14 @@ class PepeunitClient:
             try:
                 self._base_mqtt_input_func(msg)
                 if self.mqtt_input_handler:
-                    self.mqtt_input_handler(self, msg)
+                    res = self.mqtt_input_handler(self, msg)
+                    # In mqtt_as callback we can't await; schedule if user returns a coroutine.
+                    # MicroPython coroutines don't always expose __await__ reliably.
+                    if res is not None and hasattr(res, "send"):
+                        try:
+                            asyncio.create_task(res)
+                        except Exception:
+                            pass
             finally:
                 self._last_state_send = time.ticks_ms()
                 self._in_mqtt_callback = False
@@ -156,8 +180,9 @@ class PepeunitClient:
         self.rest_client.download_update(tmp)
         self.logger.info('Success download update archive', file_only=True)
         
-        unit_directory = FileManager.dirname(self.env_file_path)
-        FileManager.extract_tar_gz(tmp, unit_directory)
+        # FileManager is async-only; update is sync, so keep a local sync extractor here.
+        unit_directory = self.env_file_path[: self.env_file_path.rfind('/')] if '/' in self.env_file_path else ''
+        self._extract_tar_gz_sync(tmp, unit_directory)
         self.logger.info('Success extract archive', file_only=True)
         gc.collect()
 
@@ -167,24 +192,72 @@ class PepeunitClient:
             pass
 
     def _handle_log_sync(self):
-        try:
-            FileManager.trim_ndjson(self.logger.log_file_path, self.settings.PU_MAX_LOG_LENGTH)
-        except Exception:
-            pass
+        async def _trim_and_send(topic):
+            try:
+                await FileManager.trim_ndjson(self.logger.log_file_path, self.settings.PU_MAX_LOG_LENGTH)
+            except Exception:
+                pass
+
+            async def on_line(line):
+                await self.mqtt_client.publish(topic, line)
+                if gc.mem_free() < 8000:
+                    gc.collect()
+                await asyncio.sleep_ms(50)
+
+            await FileManager.iter_lines_bytes_cb(self.logger.log_file_path, on_line, yield_every=32)
 
         topic = self.schema.output_base_topic[BaseOutputTopicType.LOG_PEPEUNIT][0]
 
         try:
-            for line in FileManager.iter_lines_bytes(self.logger.log_file_path):
-                self.mqtt_client.publish_now(topic, line)
-                if gc.mem_free() < 8000:
-                    gc.collect()
-
-                time.sleep_ms(50)
-
-            self.logger.info('Success send logs to MQTT')
+            asyncio.create_task(_trim_and_send(topic))
+            self.logger.info('Scheduled log sync to MQTT')
         except Exception:
             pass
+
+    # --- internal sync-only helper for update extraction (avoid FileManager sync API) ---
+    def _extract_tar_gz_sync(self, tgz_path, dest_root):
+        import tarfile
+        import deflate
+        from shutil import shutil as shutil
+
+        def _ensure_dir(path):
+            if not path:
+                return
+            parts = []
+            if path.startswith('/'):
+                base = '/'
+                rest = path[1:]
+            else:
+                base = ''
+                rest = path
+            for p in rest.split('/'):
+                parts.append(p)
+                cur = (base + '/'.join(parts)) if base else '/'.join(parts)
+                try:
+                    os.mkdir(cur)
+                except OSError:
+                    pass
+
+        _ensure_dir(dest_root)
+        with open(tgz_path, 'rb') as tgz:
+            tar_file = deflate.DeflateIO(tgz, deflate.AUTO, 9)
+            unpack_tar = tarfile.TarFile(fileobj=tar_file)
+            for unpack_file in unpack_tar:
+                if unpack_file.type == tarfile.DIRTYPE or '@PaxHeader' in unpack_file.name:
+                    continue
+                out_path = dest_root + '/' + unpack_file.name[2:]
+                _ensure_dir(out_path[: out_path.rfind('/')])
+                subf = unpack_tar.extractfile(unpack_file)
+                try:
+                    with open(out_path, 'wb') as outf:
+                        shutil.copyfileobj(subf, outf, length=256)
+                        outf.close()
+                finally:
+                    try:
+                        if subf:
+                            subf.close()
+                    except Exception:
+                        pass
 
     def _subscribe_all_schema_topics_now(self):
         self.mqtt_client.subscribe_all_schema_topics()
@@ -195,14 +268,19 @@ class PepeunitClient:
             return
         self._subscribe_all_schema_topics_now()
 
-    def publish_to_topics(self, topic_key, message):
-        topics = []
-        if topic_key in self.schema.output_topic:
-            topics.extend(self.schema.output_topic[topic_key])
-        elif topic_key in self.schema.output_base_topic:
-            topics.extend(self.schema.output_base_topic[topic_key])
+    async def publish_to_topics(self, topic_key, message):
+        # Low-RAM: avoid building intermediate lists on every publish.
+        topics = self.schema.output_topic.get(topic_key, None)
+        if topics is None:
+            topics = self.schema.output_base_topic.get(topic_key, None)
+        if not topics:
+            try:
+                self.logger.warning("No MQTT topics for key: {}".format(topic_key), file_only=True)
+            except Exception:
+                pass
+            return
         for topic in topics:
-            self.mqtt_client.publish(topic, message)
+            await self.mqtt_client.publish(topic, message)
 
     def _base_mqtt_output_handler(self):
         current_time = self.time_manager.get_epoch_ms()
@@ -210,38 +288,63 @@ class PepeunitClient:
             if (current_time - self._last_state_send) / 1000 >= self.settings.PU_STATE_SEND_INTERVAL:
                 topic = self.schema.output_base_topic[BaseOutputTopicType.STATE_PEPEUNIT][0]
                 state_data = self.get_system_state()
-                self.mqtt_client.publish(topic, json.dumps(state_data))
+                # This is called from async main loop; schedule to avoid blocking if needed.
+                try:
+                    # Don't allocate tasks if MQTT isn't connected or RAM is low.
+                    if gc.mem_free() < getattr(self.settings, "PU_STATE_MQTT_MIN_FREE", 6000):
+                        self._last_state_send = current_time
+                        return
+                    cli = getattr(self.mqtt_client, "_client", None)
+                    if cli is None:
+                        self._last_state_send = current_time
+                        return
+                    isconn = getattr(cli, "isconnected", None)
+                    if isconn and not isconn():
+                        self._last_state_send = current_time
+                        return
+                    asyncio.create_task(self.mqtt_client.publish(topic, json.dumps(state_data)))
+                except Exception:
+                    pass
                 self._last_state_send = current_time
 
     def run_main_cycle(self):
+        raise NotImplementedError("Synchronous run_main_cycle() is not supported with mqtt_as. Use run_main_cycle_async().")
+
+    async def run_main_cycle_async(self, cycle_ms=20):
+        """
+        Async variant of `run_main_cycle()` intended for use with `mqtt_as`.
+        Incoming messages are handled by mqtt_as internal tasks; this loop only
+        drives periodic publish handlers and resubscribe requests.
+        """
+        try:
+            import uasyncio as asyncio  # MicroPython
+        except ImportError:
+            import asyncio
+
         self._running = True
         try:
             while self._running:
                 if self._resubscribe_requested and not self._in_mqtt_callback:
                     try:
-                        self._subscribe_all_schema_topics_now()
+                        # For mqtt_as client: subscribe is async.
+                        subscribe_all = getattr(self.mqtt_client, "subscribe_all_schema_topics", None)
+                        if subscribe_all:
+                            res = subscribe_all()
+                            if res is not None:
+                                await res
                     finally:
                         self._resubscribe_requested = False
 
-                self.mqtt_client.service_io(budget_ms=5, max_in=16, max_out=1)
-                self.mqtt_client.dispatch_one()
-                    
                 if self.mqtt_output_handler:
-                    self.mqtt_output_handler(self)
+                    res = self.mqtt_output_handler(self)
+                    # Allow async output handlers.
+                    # MicroPython coroutines don't always expose __await__ reliably.
+                    if res is not None and hasattr(res, "send"):
+                        await res
 
                 self._base_mqtt_output_handler()
 
-                if self.settings.PU_MQTT_PING_INTERVAL > 0 and self.settings.PU_MQTT_KEEPALIVE > 0:
-                    now = time.ticks_ms()
-                    if self.settings.PU_MQTT_PING_INTERVAL < self.settings.PU_MQTT_KEEPALIVE:
-                        if time.ticks_diff(now, self._last_mqtt_ping_ms) >= int(self.settings.PU_MQTT_PING_INTERVAL * 1000):
-                            self.mqtt_client.ping()
-                            self._last_mqtt_ping_ms = now
-                            print('ping')
-                    else:
-                        self.logger.warning('PU_MQTT_PING_INTERVAL > PU_MQTT_KEEPALIVE. Ping logic disabled', file_only=True)
-
-                time.sleep_ms(1)
+                await asyncio.sleep_ms(int(cycle_ms))
         finally:
             self._running = False
 

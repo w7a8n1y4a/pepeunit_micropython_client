@@ -4,6 +4,11 @@ import gc
 from .enums import LogLevel, BaseOutputTopicType
 from .file_manager import FileManager
 
+try:
+    import uasyncio as asyncio  # MicroPython
+except ImportError:  # CPython
+    import asyncio
+
 
 class Logger:
     def __init__(self, log_file_path, mqtt_client=None, schema_manager=None, settings=None, time_manager=None, ff_console_log_enable=True):
@@ -33,11 +38,27 @@ class Logger:
         if self.ff_console_log_enable:
             print(log_entry)
 
-        FileManager.append_ndjson_with_limit(self.log_file_path, log_entry, self.settings.PU_MAX_LOG_LENGTH)
+        # File writes are async-only: schedule append.
+        try:
+            asyncio.create_task(
+                FileManager.append_ndjson_with_limit(self.log_file_path, log_entry, self.settings.PU_MAX_LOG_LENGTH)
+            )
+        except Exception:
+            pass
         if not file_only and self.mqtt_client and BaseOutputTopicType.LOG_PEPEUNIT in self.schema_manager.output_base_topic:
             topic = self.schema_manager.output_base_topic[BaseOutputTopicType.LOG_PEPEUNIT][0]
             try:
-                self.mqtt_client.publish(topic, json.dumps(log_entry))
+                # MQTT publish is async (mqtt_as). We can't await here, so schedule.
+                # Low-RAM safety: don't create tasks unless MQTT is actually connected.
+                if gc.mem_free() < getattr(self.settings, "PU_LOG_MQTT_MIN_FREE", 8000):
+                    return
+                cli = getattr(self.mqtt_client, "_client", None)
+                if cli is None:
+                    return
+                isconn = getattr(cli, "isconnected", None)
+                if isconn and not isconn():
+                    return
+                asyncio.create_task(self.mqtt_client.publish(topic, json.dumps(log_entry)))
             except Exception:
                 pass
 
@@ -61,7 +82,16 @@ class Logger:
             pass
 
     def iter_log(self):
-        if not FileManager.file_exists(self.log_file_path):
+        # Kept as sync generator without FileManager dependency.
+        try:
+            with open(self.log_file_path, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        yield json.loads(line)
+                    except Exception:
+                        continue
+        except Exception:
             return
-        for item in FileManager.iter_ndjson(self.log_file_path):
-            yield item

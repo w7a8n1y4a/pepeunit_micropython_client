@@ -2,8 +2,6 @@ import gc
 import ujson as json
 import mrequests
 
-from .file_manager import FileManager
-
 
 class PepeunitRestClient:
     def __init__(self, settings):
@@ -45,10 +43,7 @@ class PepeunitRestClient:
         url = self._get_base_url() + '/units/env/' + self.settings.unit_uuid
         headers = self._get_auth_headers()
         self._download_file(url, headers, file_path)
-        
-        data = FileManager.read_json(file_path)
-        FileManager.write_json(file_path, data)
-        del data
+        # Avoid JSON load/dump pass: it can spike RAM on low-memory boards.
         gc.collect()
 
     def download_schema(self, file_path):
@@ -56,10 +51,7 @@ class PepeunitRestClient:
         headers = self._get_auth_headers()
 
         self._download_file(url, headers, file_path)
-
-        data = FileManager.read_json(file_path)
-        FileManager.write_json(file_path, data)
-        del data
+        # Avoid JSON load/dump pass: it can spike RAM on low-memory boards.
         gc.collect()
 
     def set_state_storage(self, state):

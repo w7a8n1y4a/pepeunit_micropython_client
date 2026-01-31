@@ -24,8 +24,10 @@ from pepeunit_micropython_client.enums import SearchTopicType, SearchScope
 from pepeunit_micropython_client.cipher import AesGcmCipher
     
 last_output_send_time = 0
+_last_diag_ms = 0
+_pub_attempts = 0
 
-def output_handler(client: PepeunitClient):
+async def output_handler(client: PepeunitClient):
     global last_output_send_time
     current_time = client.time_manager.get_epoch_ms()
     
@@ -35,12 +37,12 @@ def output_handler(client: PepeunitClient):
         
         #client.logger.debug(f"Send to output/pepeunit: {message}", file_only=True)
         
-        client.publish_to_topics("output/pepeunit", message)
+        await client.publish_to_topics("output/pepeunit", message)
         
         last_output_send_time = current_time
 
 
-def input_handler(client: PepeunitClient, msg):
+async def input_handler(client: PepeunitClient, msg):
     try:
         topic_parts = msg.topic.split("/")
         if len(topic_parts) == 3:
@@ -106,23 +108,50 @@ def test_cipher(client: PepeunitClient):
         client.logger.error("Cipher test error: {}".format(e))
 
 
-def main(client: PepeunitClient):
+async def main_async(client: PepeunitClient):
     test_set_get_storage(client)
     test_get_units(client)
     test_cipher(client)
     
     client.set_mqtt_input_handler(input_handler)
-    client.mqtt_client.connect()
-    client.subscribe_all_schema_topics()
+    await client.mqtt_client.connect()
+    await client.mqtt_client.subscribe_all_schema_topics()
+    client.logger.info("Subscribed to schema topics")
+    try:
+        client.logger.info(
+            "MQTT output topics for output/pepeunit: {}".format(client.schema.output_topic.get("output/pepeunit")),
+            file_only=True,
+        )
+    except Exception:
+        pass
     client.set_output_handler(output_handler)
-    client.run_main_cycle()
+    client.logger.info("Starting main cycle")
+    await client.run_main_cycle_async()
 
 
 if __name__ == '__main__':
     try:
-        main(client)
+        try:
+            import uasyncio as asyncio
+        except ImportError:
+            import asyncio
+
+        # MicroPython: `client` is typically created by `boot.py`.
+        client_obj = globals().get("client", None)
+        if client_obj is None:
+            raise RuntimeError("`client` is not defined. Create it in boot.py (see example/boot.py).")
+
+        try:
+            asyncio.run(main_async(client_obj))
+        except AttributeError:
+            # Older uasyncio
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(main_async(client_obj))
     except KeyboardInterrupt:
         raise
     except Exception as e:
-        client.logger.critical(f"Error with reset: {str(e)}", file_only=True)
-        client.restart_device()
+        try:
+            client_obj.logger.critical(f"Error with reset: {str(e)}", file_only=True)
+            client_obj.restart_device()
+        except Exception:
+            raise

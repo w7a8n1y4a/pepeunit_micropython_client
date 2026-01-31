@@ -3,16 +3,24 @@ import os
 import gc
 from shutil import shutil as shutil
 
-import utils
+try:
+    import uasyncio as asyncio  # MicroPython
+except ImportError:  # CPython
+    import asyncio
 
 class FileManager:
+    # -----------------------
+    # Internal helpers (async)
+    # -----------------------
     @staticmethod
-    def dirname(path):
-        idx = path.rfind('/')
-        return path[:idx] if idx > 0 else ''
+    async def _ayield(counter, every=32, mem_free_threshold=8000, do_gc=True):
+        if counter % every == 0:
+            if do_gc and gc.mem_free() < mem_free_threshold:
+                gc.collect()
+            await asyncio.sleep_ms(0)
 
     @staticmethod
-    def _ensure_dir(path):
+    async def _ensure_dir(path, *, yield_every=32):
         if not path:
             return
         parts = []
@@ -22,16 +30,19 @@ class FileManager:
         else:
             base = ''
             rest = path
+        idx = 0
         for p in rest.split('/'):
+            idx += 1
             parts.append(p)
             cur = (base + '/'.join(parts)) if base else '/'.join(parts)
             try:
                 os.mkdir(cur)
             except OSError:
                 pass
+            await FileManager._ayield(idx, every=yield_every, do_gc=False)
 
     @staticmethod
-    def read_json(file_path):
+    async def read_json(file_path):
         with open(file_path, 'r') as f:
             data = json.load(f)
             if isinstance(data, str):
@@ -39,13 +50,17 @@ class FileManager:
             return data
 
     @staticmethod
-    def write_json(file_path, data):
-        FileManager._ensure_dir(FileManager.dirname(file_path))
+    async def write_json(file_path, data, *, yield_every=32):
+        # VFS operations are blocking, but chunking and yielding reduces long loop stalls.
+        dirpath = file_path[: file_path.rfind('/')] if '/' in file_path else ''
+        await FileManager._ensure_dir(dirpath, yield_every=yield_every)
+        # json.dump writes in chunks internally; we just yield once after dump.
         with open(file_path, 'w') as f:
             json.dump(data, f)
+        await FileManager._ayield(0, every=1, do_gc=True)
 
     @staticmethod
-    def file_exists(file_path):
+    async def file_exists(file_path):
         try:
             os.stat(file_path)
             return True
@@ -53,8 +68,13 @@ class FileManager:
             return False
 
     @staticmethod
-    def append_ndjson_with_limit(file_path, item, max_lines):
-        FileManager._ensure_dir(FileManager.dirname(file_path))
+    async def append_ndjson_with_limit(file_path, item, max_lines, *, yield_every=32):
+        """
+        Async-friendly NDJSON append + trim.
+        Note: FS writes are still blocking, but we yield between phases and while trimming.
+        """
+        dirpath = file_path[: file_path.rfind('/')] if '/' in file_path else ''
+        await FileManager._ensure_dir(dirpath, yield_every=yield_every)
         try:
             with open(file_path, 'r') as f:
                 ch = ''
@@ -64,57 +84,48 @@ class FileManager:
                         ch = c
                         break
             if ch == '[':
-                data = FileManager.read_json(file_path)
-                if isinstance(data, list):
+                # Low-RAM safety: drop legacy JSON-array format.
+                try:
                     with open(file_path, 'w') as fw:
-                        for idx, it in enumerate(data, 1):
-                            json.dump(it, fw)
-                            fw.write('\n')
-                            utils._yield(idx, every=32)
+                        pass
+                except Exception:
+                    pass
         except Exception:
             pass
+
         try:
             with open(file_path, 'a') as f:
                 json.dump(item, f)
                 f.write('\n')
         except Exception:
             pass
-        FileManager.trim_ndjson(file_path, max_lines)
+
+        await FileManager._ayield(0, every=1, do_gc=False)
+        await FileManager.trim_ndjson(file_path, max_lines, yield_every=yield_every)
 
     @staticmethod
-    def iter_ndjson(file_path):
-        try:
-            with open(file_path, 'r') as f:
-                idx = 0
-                for line in f:
-                    idx += 1
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        yield json.loads(line)
-                    except Exception:
-                        continue
-                    utils._yield(idx, every=32)
-        except Exception:
-            return
-
-    @staticmethod
-    def iter_lines_bytes(file_path):
+    async def iter_lines_bytes_cb(file_path, on_line, *, yield_every=32):
+        """
+        Async-friendly line iteration without async generators (more compatible across ports).
+        `on_line(line: bytes)` can be sync or async.
+        """
         try:
             with open(file_path, 'rb') as f:
                 idx = 0
                 for line in f:
                     idx += 1
                     line = line.strip()
-                    if line:
-                        yield line
-                    utils._yield(idx, every=32)
+                    if not line:
+                        continue
+                    res = on_line(line)
+                    if res is not None and hasattr(res, "send"):
+                        await res
+                    await FileManager._ayield(idx, every=yield_every, do_gc=False)
         except Exception:
             return
 
     @staticmethod
-    def _move(src, dst):
+    async def _move(src, dst):
         try:
             shutil.move(src, dst)
         except Exception:
@@ -124,39 +135,46 @@ class FileManager:
                 pass
 
     @staticmethod
-    def trim_ndjson(file_path, max_lines):
+    async def trim_ndjson(file_path, max_lines, *, yield_every=32):
         if max_lines <= 0:
             return
         try:
             total = 0
-            tail = []
+            tail = [None] * max_lines
+            ti = 0
             with open(file_path, 'r') as f:
                 for line in f:
                     total += 1
-                    if len(tail) < max_lines:
-                        tail.append(line)
-                    else:
-                        tail.pop(0)
-                        tail.append(line)
-                    utils._yield(total, every=32)
+                    tail[ti] = line
+                    ti = (ti + 1) % max_lines
+                    await FileManager._ayield(total, every=yield_every, do_gc=False)
             if total <= max_lines:
                 return
             tmp_path = file_path + '.tmp'
             with open(tmp_path, 'w') as dst:
-                for idx, line in enumerate(tail, 1):
-                    dst.write(line)
-                    utils._yield(idx, every=32)
-            FileManager._move(tmp_path, file_path)
+                start = ti
+                idx = 0
+                while idx < max_lines:
+                    line = tail[(start + idx) % max_lines]
+                    if line is not None:
+                        dst.write(line)
+                    idx += 1
+                    await FileManager._ayield(idx, every=yield_every, do_gc=False)
+            await FileManager._move(tmp_path, file_path)
             gc.collect()
+            await asyncio.sleep_ms(0)
         except Exception:
             pass
 
     @staticmethod
-    def extract_tar_gz(tgz_path, dest_root):
+    async def extract_tar_gz(tgz_path, dest_root, *, copy_chunk=256, yield_every=16):
+        """
+        Async-friendly tgz extraction. Still uses blocking FS, but yields between files.
+        """
         import tarfile
         import deflate
 
-        FileManager._ensure_dir(dest_root)
+        await FileManager._ensure_dir(dest_root, yield_every=yield_every)
 
         with open(tgz_path, 'rb') as tgz:
             tar_file = deflate.DeflateIO(tgz, deflate.AUTO, 9)
@@ -164,14 +182,15 @@ class FileManager:
             for idx, unpack_file in enumerate(unpack_tar, 1):
                 if unpack_file.type == tarfile.DIRTYPE or '@PaxHeader' in unpack_file.name:
                     continue
-                
+
                 out_path = dest_root + '/' + unpack_file.name[2:]
-                FileManager._ensure_dir(FileManager.dirname(out_path))
+                out_dir = out_path[: out_path.rfind('/')] if '/' in out_path else ''
+                await FileManager._ensure_dir(out_dir, yield_every=yield_every)
                 subf = unpack_tar.extractfile(unpack_file)
 
                 try:
                     with open(out_path, 'wb') as outf:
-                        shutil.copyfileobj(subf, outf, length=256)
+                        shutil.copyfileobj(subf, outf, length=copy_chunk)
                         outf.close()
                 finally:
                     try:
@@ -179,5 +198,8 @@ class FileManager:
                             subf.close()
                     except Exception:
                         pass
-                utils._yield(idx, every=32)
+
+                await FileManager._ayield(idx, every=yield_every, do_gc=True)
+
         gc.collect()
+        await asyncio.sleep_ms(0)

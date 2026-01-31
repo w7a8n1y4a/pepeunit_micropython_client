@@ -4,7 +4,7 @@ freeze("$(PORT_DIR)/modules")
 # asyncio (useful for many apps)
 include("$(MPY_DIR)/extmod/asyncio")
 
-# Minimal required micropython-lib deps (do not require umqtt.simple; our src provides it)
+# Minimal required micropython-lib deps
 require("upysh")
 # NTP time sync for TimeManager
 require("ntptime")

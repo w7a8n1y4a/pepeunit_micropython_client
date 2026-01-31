@@ -1,7 +1,7 @@
 import ujson as json
 import ubinascii as binascii
 
-from .file_manager import FileManager
+import os
 
 
 class Settings:
@@ -43,9 +43,19 @@ class Settings:
         return uuid
 
     def load_from_file(self):
-        if not self.env_file_path or not FileManager.file_exists(self.env_file_path):
+        if not self.env_file_path:
             return
-        data = FileManager.read_json(self.env_file_path)
+        try:
+            os.stat(self.env_file_path)
+        except OSError:
+            return
+        try:
+            with open(self.env_file_path, "r") as f:
+                data = json.load(f)
+                if isinstance(data, str):
+                    data = json.loads(data)
+        except Exception:
+            return
 
         for k, v in data.items():
             setattr(self, k, v)

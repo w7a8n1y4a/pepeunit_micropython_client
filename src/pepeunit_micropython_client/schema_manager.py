@@ -1,7 +1,7 @@
-from .file_manager import FileManager
 from .enums import SearchTopicType, SearchScope, DestinationTopicType
 
 import utils
+import ujson as json
 
 
 class SchemaManager:
@@ -10,7 +10,14 @@ class SchemaManager:
         self._schema_data = self.update_from_file()
 
     def update_from_file(self):
-        self._schema_data = FileManager.read_json(self.schema_file_path)
+        try:
+            with open(self.schema_file_path, "r") as f:
+                data = json.load(f)
+                if isinstance(data, str):
+                    data = json.loads(data)
+                self._schema_data = data
+        except Exception:
+            self._schema_data = {}
 
         return self._schema_data
 
