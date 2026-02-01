@@ -8,6 +8,22 @@ class _Msg:
     __slots__ = ("topic", "payload", "retained", "properties")
 
 
+class _InputDropContext:
+    __slots__ = ("_client",)
+
+    def __init__(self, client):
+        self._client = client
+
+    def __enter__(self):
+        self._client._drop_input_refcount += 1
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        cnt = self._client._drop_input_refcount - 1
+        self._client._drop_input_refcount = cnt if cnt > 0 else 0
+        return False
+
+
 class PepeunitMqttClient:
     def __init__(self, settings, schema_manager, logger):
         self.settings = settings
@@ -15,6 +31,7 @@ class PepeunitMqttClient:
         self.logger = logger
 
         self._input_handler = None
+        self._drop_input_refcount = 0
 
         self._client = None
         self._wifi_manager = None
@@ -145,6 +162,8 @@ class PepeunitMqttClient:
             self._reconnect_in_progress = False
 
     def _on_message(self, topic, msg, retained=False, properties=None):
+        if self._drop_input_refcount:
+            return
         if self._input_handler is None:
             return
         m = _Msg()
@@ -163,6 +182,12 @@ class PepeunitMqttClient:
 
     def set_input_handler(self, handler):
         self._input_handler = handler
+
+    def drop_input(self):
+        return _InputDropContext(self)
+
+    def is_drop_input_active(self):
+        return bool(self._drop_input_refcount)
 
     async def connect(self):
         if self.is_connected():
