@@ -25,7 +25,14 @@ class PepeunitRestClient:
         )
 
     async def _download_file(self, url, headers, file_path):
-        status, _, _ = await request("GET", url, headers=headers, save_to=file_path, bufsize=256)
+        status, _, _ = await request(
+            "GET",
+            url,
+            headers=headers,
+            save_to=file_path,
+            bufsize=256,
+            collect_headers=False,
+        )
         if status >= 400:
             raise OSError("HTTP error {}".format(status))
         gc.collect()

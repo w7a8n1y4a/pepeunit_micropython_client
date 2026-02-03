@@ -169,6 +169,34 @@ class _BufferedSock:
             if n == 0:
                 return b""
 
+    async def skip_headers(self, limit=8192) -> bool:
+        """
+        Consume bytes until the end of HTTP headers (CRLF CRLF) is reached.
+
+        This avoids allocating per-header-line buffers. Returns True if the
+        delimiter was found, otherwise False (EOF or limit exceeded).
+        """
+        pat = b"\r\n\r\n"
+        consumed = 0
+        while True:
+            i = self.buf.find(pat, self.start, self.end)
+            if i != -1:
+                self.start = i + 4
+                return True
+
+            # Not found: keep last 3 bytes for boundary overlap.
+            avail = self.end - self.start
+            if avail > 3:
+                step = avail - 3
+                self.start += step
+                consumed += step
+                if consumed >= limit:
+                    return False
+
+            n = await self._fill()
+            if n == 0:
+                return False
+
 
 async def _as_write(sock, data: bytes):
     mv = memoryview(data)
@@ -188,7 +216,34 @@ async def _as_write(sock, data: bytes):
         if (off & 0x3FF) == 0:
             await asyncio.sleep_ms(0)
 
-async def request(method, url, headers=None, body=None, *, save_to=None, bufsize=256, max_body=64_000):
+def _parse_status(status_line: bytes) -> int:
+    # Expected: b"HTTP/1.1 200 OK\r\n"
+    sp1 = status_line.find(b" ")
+    if sp1 < 0:
+        return 0
+    sp2 = status_line.find(b" ", sp1 + 1)
+    if sp2 < 0:
+        sp2 = status_line.find(b"\r", sp1 + 1)
+    if sp2 < 0:
+        sp2 = len(status_line)
+    try:
+        return int(status_line[sp1 + 1 : sp2])
+    except Exception:
+        return 0
+
+
+async def request(
+    method,
+    url,
+    headers=None,
+    body=None,
+    *,
+    save_to=None,
+    bufsize=256,
+    max_body=64_000,
+    collect_headers=True,
+    header_limit=2048,
+):
 
     headers = headers or {}
     scheme, host, port, path = _parse_url(url)
@@ -223,47 +278,53 @@ async def request(method, url, headers=None, body=None, *, save_to=None, bufsize
         if body is not None:
             b = body if isinstance(body, bytes) else _to_bytes(body)
 
-        req = bytearray()
-        req.extend(_to_bytes(method))
-        req.extend(b" ")
-        req.extend(_to_bytes(path))
-        req.extend(b" HTTP/1.1\r\n")
-        req.extend(b"Host: ")
-        req.extend(_to_bytes(host))
-        req.extend(b"\r\n")
-        req.extend(b"Connection: close\r\n")
+        # Stream request to socket (no big request buffer).
+        method_b = _to_bytes(method)
+        path_b = _to_bytes(path)
+        host_b = _to_bytes(host)
+
+        await _as_write(s, method_b)
+        await _as_write(s, b" ")
+        await _as_write(s, path_b)
+        await _as_write(s, b" HTTP/1.1\r\nHost: ")
+        await _as_write(s, host_b)
+        await _as_write(s, b"\r\nConnection: close\r\n")
+
         for k, v in headers.items():
-            req.extend(_to_bytes(k))
-            req.extend(b": ")
-            req.extend(_to_bytes(v))
-            req.extend(b"\r\n")
+            await _as_write(s, _to_bytes(k))
+            await _as_write(s, b": ")
+            await _as_write(s, _to_bytes(v))
+            await _as_write(s, b"\r\n")
+
         if b:
-            req.extend(b"Content-Length: ")
-            req.extend(str(len(b)).encode("ascii"))
-            req.extend(b"\r\n")
-        req.extend(b"\r\n")
+            await _as_write(s, b"Content-Length: ")
+            await _as_write(s, str(len(b)).encode("ascii"))
+            await _as_write(s, b"\r\n")
+
+        await _as_write(s, b"\r\n")
         if b:
-            req.extend(b)
+            await _as_write(s, b)
 
-        await _as_write(s, req)
+        reader = _BufferedSock(s, bufsize=bufsize)
 
-        reader = _BufferedSock(s, bufsize=512 if bufsize < 512 else bufsize)
-
-        status_line = await reader.readline(limit=2048)
-        parts = status_line.split()
-        status = int(parts[1]) if len(parts) >= 2 else 0
+        status_line = await reader.readline(limit=256)
+        status = _parse_status(status_line)
 
         resp_headers = {}
-        while True:
-            line = await reader.readline(limit=2048)
-            if not line or line in (b"\r\n", b"\n"):
-                break
-            i = line.find(b":")
-            if i < 0:
-                continue
-            k = line[:i].strip().lower()
-            v = line[i + 1 :].strip()
-            resp_headers[k] = v
+        if collect_headers:
+            while True:
+                line = await reader.readline(limit=header_limit)
+                if not line or line in (b"\r\n", b"\n"):
+                    break
+                i = line.find(b":")
+                if i < 0:
+                    continue
+                k = line[:i].strip().lower()
+                v = line[i + 1 :].strip()
+                resp_headers[k] = v
+        else:
+            # Still must consume headers to align to body.
+            await reader.skip_headers()
 
 
         if save_to:
