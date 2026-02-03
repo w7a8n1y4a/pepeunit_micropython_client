@@ -12,10 +12,7 @@ class SchemaManager:
     def update_from_file(self):
         try:
             with open(self.schema_file_path, "r") as f:
-                data = json.load(f)
-                if isinstance(data, str):
-                    data = json.loads(data)
-                self._schema_data = data
+                self._schema_data = json.load(f)
         except Exception:
             self._schema_data = {}
 

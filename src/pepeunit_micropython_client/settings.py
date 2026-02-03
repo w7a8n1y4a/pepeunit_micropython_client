@@ -37,25 +37,36 @@ class Settings:
     def unit_uuid(self):
         if self._unit_uuid is not None:
             return self._unit_uuid
-        data = self.PU_AUTH_TOKEN.split('.')[1].encode()
-        uuid = json.loads(binascii.a2b_base64(data + (len(data) % 4) * b'=').decode('utf-8'))['uuid']
+        token = self.PU_AUTH_TOKEN
+        dot1 = token.find(".")
+        if dot1 < 0:
+            return None
+        dot2 = token.find(".", dot1 + 1)
+        if dot2 < 0:
+            return None
+
+        payload = token[dot1 + 1 : dot2].encode()
+        if b"-" in payload or b"_" in payload:
+            payload = payload.replace(b"-", b"+").replace(b"_", b"/")
+        pad = (-len(payload)) & 3
+        if pad:
+            payload = payload + (b"=" * pad)
+
+        try:
+            decoded = binascii.a2b_base64(payload)
+            uuid = json.loads(decoded.decode("utf-8"))["uuid"]
+        except Exception:
+            return None
+
         self._unit_uuid = uuid
         return uuid
 
     def load_from_file(self):
         if not self.env_file_path:
             return
-        try:
-            os.stat(self.env_file_path)
-        except OSError:
-            return
-        try:
-            with open(self.env_file_path, "r") as f:
-                data = json.load(f)
-                if isinstance(data, str):
-                    data = json.loads(data)
-        except Exception:
-            return
+
+        with open(self.env_file_path, "r") as f:
+            data = json.load(f)
 
         for k, v in data.items():
             setattr(self, k, v)

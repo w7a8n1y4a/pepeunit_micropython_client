@@ -38,10 +38,7 @@ class FileManager:
     @staticmethod
     async def read_json(file_path):
         with open(file_path, 'r') as f:
-            data = json.load(f)
-            if isinstance(data, str):
-                data = json.loads(data)
-            return data
+            return json.load(f)
 
     @staticmethod
     async def write_json(file_path, data, *, yield_every=32):
