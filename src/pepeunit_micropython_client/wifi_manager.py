@@ -17,10 +17,6 @@ class WifiManager:
         self.settings = settings
         self._sta = None
 
-    @staticmethod
-    def _decode_ssid(value):
-        return utils.to_str(value)
-
     @classmethod
     def _set_reconnects(cls, sta):
         if cls._PLATFORM in ("esp32", "rp2"):
@@ -41,7 +37,7 @@ class WifiManager:
 
     def get_connected_ssid(self):
         sta = self.get_sta()
-        return self._decode_ssid(sta.config("essid"))
+        return utils.to_str(sta.config("essid"))
 
     async def _force_sta_reset(self):
         self.logger.info("WiFi station prepare", file_only=True)
@@ -59,7 +55,7 @@ class WifiManager:
         scan = sta.scan()
         for idx, ap in enumerate(scan, 1):
             ap_ssid = ap[0]
-            ap_ssid = self._decode_ssid(ap_ssid)
+            ap_ssid = utils.to_str(ap_ssid)
             if ap_ssid == self.settings.PUC_WIFI_SSID:
                 return True
             await utils.ayield(idx, every=8, do_gc=False)

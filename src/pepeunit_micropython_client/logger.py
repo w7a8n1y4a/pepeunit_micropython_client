@@ -1,5 +1,6 @@
 import ujson as json
 import gc
+import utils
 
 from .enums import LogLevel, BaseOutputTopicType
 from .file_manager import FileManager
@@ -41,7 +42,7 @@ class Logger:
         )
 
         if not file_only and self.mqtt_client and BaseOutputTopicType.LOG_PEPEUNIT in self.schema_manager.output_base_topic:
-            if gc.mem_free() < 8192:
+            if utils.should_collect_memory(8192):
                 return
             topic = self.schema_manager.output_base_topic[BaseOutputTopicType.LOG_PEPEUNIT][0]
             asyncio.create_task(self.mqtt_client.publish(topic, log_entry))

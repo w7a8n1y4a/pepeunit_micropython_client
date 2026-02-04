@@ -84,12 +84,7 @@ class PepeunitRestClient:
         return utils.to_str(body)
 
     async def get_input_by_output(self, topic, limit=10, offset=0):
-        first_sep = topic.find('/')
-        if first_sep < 0:
-            uuid = topic
-        else:
-            second_sep = topic.find('/', first_sep + 1)
-            uuid = topic[first_sep + 1:second_sep] if second_sep > first_sep else topic[first_sep + 1:]
+        uuid = utils.extract_uuid_from_topic(topic, allow_no_slash=True)
 
         base_url = self._get_base_url() + '/unit_nodes'
         headers = self._get_auth_headers()

@@ -77,7 +77,7 @@ class SchemaManager:
 
     def _topic_url_matches_uuid(self, topic_url, uuid):
         if uuid is None:
-            return self._extract_uuid_from_topic(topic_url) is None
+            return utils.extract_uuid_from_topic(topic_url) is None
 
         first = topic_url.find('/')
         if first < 0:
@@ -89,17 +89,6 @@ class SchemaManager:
 
         end = start + len(uuid)
         return (end == len(topic_url)) or (topic_url[end] == '/')
-
-    def _extract_uuid_from_topic(self, topic_url):
-        first = topic_url.find('/')
-        if first < 0:
-            return None
-        second = topic_url.find('/', first + 1)
-        if second < 0:
-            uuid = topic_url[first + 1:]
-        else:
-            uuid = topic_url[first + 1:second]
-        return uuid if uuid else None
 
     async def _search_topic_name_in_section(self, section, topic_name):
         topic_section = self._schema_data.get(section, {})

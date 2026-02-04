@@ -36,7 +36,7 @@ class FileManager:
     @staticmethod
     async def write_json(file_path, data, *, yield_every=32):
 
-        dirpath = file_path[: file_path.rfind('/')] if '/' in file_path else ''
+        dirpath = utils.dirname(file_path)
         await FileManager._ensure_dir(dirpath, yield_every=yield_every)
 
         with open(file_path, 'w') as f:
@@ -54,7 +54,7 @@ class FileManager:
     @staticmethod
     async def append_ndjson_with_limit(file_path, item, max_lines, *, yield_every=32):
 
-        dirpath = file_path[: file_path.rfind('/')] if '/' in file_path else ''
+        dirpath = utils.dirname(file_path)
         await FileManager._ensure_dir(dirpath, yield_every=yield_every)
         try:
             with open(file_path, 'r') as f:
@@ -161,7 +161,7 @@ class FileManager:
                     continue
 
                 out_path = dest_root + '/' + unpack_file.name[2:]
-                out_dir = out_path[: out_path.rfind('/')] if '/' in out_path else ''
+                out_dir = utils.dirname(out_path)
                 await FileManager._ensure_dir(out_dir, yield_every=yield_every)
                 subf = unpack_tar.extractfile(unpack_file)
 

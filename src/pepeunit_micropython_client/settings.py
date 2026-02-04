@@ -1,5 +1,6 @@
 import ujson as json
-import ubinascii as binascii
+
+import utils
 
 import os
 
@@ -53,7 +54,7 @@ class Settings:
             payload = payload + (b"=" * pad)
 
         try:
-            decoded = binascii.a2b_base64(payload)
+            decoded = utils.b64decode_to_bytes(payload)
             uuid = json.loads(decoded.decode("utf-8"))["uuid"]
         except Exception:
             return None

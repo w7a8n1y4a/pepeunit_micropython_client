@@ -163,7 +163,7 @@ class PepeunitClient:
         await self.rest_client.download_update(tmp)
         self.logger.info('Success download update archive', file_only=True)
 
-        unit_directory = self.env_file_path[: self.env_file_path.rfind('/')] if '/' in self.env_file_path else ''
+        unit_directory = utils.dirname(self.env_file_path)
         await FileManager.extract_tar_gz(tmp, unit_directory, copy_chunk=128, yield_every=8)
         self.logger.info('Success extract archive', file_only=True)
         gc.collect()
@@ -182,7 +182,7 @@ class PepeunitClient:
 
             async def on_line(line):
                 await self.mqtt_client.publish(topic, line)
-                if gc.mem_free() < 8000:
+                if utils.should_collect_memory(8000):
                     gc.collect()
                 await asyncio.sleep_ms(50)
 
@@ -221,7 +221,7 @@ class PepeunitClient:
                 topic = self.schema.output_base_topic[BaseOutputTopicType.STATE_PEPEUNIT][0]
                 state_payload = self.get_system_state()
 
-                if gc.mem_free() < 6000:
+                if utils.should_collect_memory(6000):
                     self._last_state_send = current_time
                     return
                 asyncio.create_task(self.mqtt_client.publish(topic, json.dumps(state_payload)))

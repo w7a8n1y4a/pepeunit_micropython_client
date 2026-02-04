@@ -1,5 +1,4 @@
 import os
-import ubinascii as binascii
 
 import utils
 
@@ -8,7 +7,7 @@ import ucryptolib as _cryptolib
 
 class AesGcmCipher:
     def _get_key(self, key_b64: str) -> bytes:
-        key = self._b64decode_to_bytes(key_b64)
+        key = utils.b64decode_to_bytes(key_b64)
         if len(key) not in (16, 24, 32):
             raise ValueError("AES key must be 16, 24, or 32 bytes after base64 decoding")
         return key
@@ -19,15 +18,15 @@ class AesGcmCipher:
 
         key = self._get_key(key)
         ciphertext, tag = await self._aes_gcm_encrypt(plaintext, nonce, key)
-        out = self._b64encode(nonce) + "." + self._b64encode(ciphertext + tag)
+        out = utils.b64encode(nonce) + "." + utils.b64encode(ciphertext + tag)
         return out
 
     async def aes_gcm_decode(self, data: str, key: str) -> str:
         parts = data.split(".")
         if len(parts) != 2:
             raise ValueError("Invalid ciphertext format")
-        nonce = self._b64decode_to_bytes(parts[0])
-        ct_and_tag = self._b64decode_to_bytes(parts[1])
+        nonce = utils.b64decode_to_bytes(parts[0])
+        ct_and_tag = utils.b64decode_to_bytes(parts[1])
         if len(nonce) != 12:
             raise ValueError("Nonce must be 12 bytes")
         if len(ct_and_tag) < 16:
@@ -46,18 +45,6 @@ class AesGcmCipher:
     @staticmethod
     def _from_bytes(b: bytes) -> int:
         return int.from_bytes(b, "big")
-
-    @staticmethod
-    def _b64encode(b: bytes) -> str:
-        return binascii.b2a_base64(b).rstrip(b"\n").decode("utf-8")
-
-    @staticmethod
-    def _b64decode_to_bytes(s: str) -> bytes:
-        bs = s.encode("utf-8")
-        padding_needed = (-len(bs)) % 4
-        if padding_needed:
-            bs += b"=" * padding_needed
-        return binascii.a2b_base64(bs)
 
     def _aes_ecb_encrypt_block(self, block16, cipher) -> bytes:
         if len(block16) != 16:
