@@ -68,7 +68,7 @@ class AesGcmCipher:
             bs += b"=" * padding_needed
         return binascii.a2b_base64(bs)
 
-    def _aes_ecb_encrypt_block(self, block16: bytes, cipher) -> bytes:
+    def _aes_ecb_encrypt_block(self, block16, cipher) -> bytes:
         if len(block16) != 16:
             raise ValueError("ECB block must be 16 bytes")
         return cipher.encrypt(block16)
@@ -76,27 +76,42 @@ class AesGcmCipher:
     @staticmethod
     def _xor_bytes(a: bytes, b: bytes) -> bytes:
         n = len(a)
-        return bytes(a[i] ^ b[i] for i in range(n))
+        out = bytearray(n)
+        for i in range(n):
+            out[i] = a[i] ^ b[i]
+        return bytes(out)
 
     @staticmethod
-    def _pad16(b: bytes) -> bytes:
-        if not b:
-            return b""
-        rem = len(b) % 16
-        if rem == 0:
-            return b
-        return b + b"\x00" * (16 - rem)
+    def _xor_into(out: bytearray, out_offset: int, a, b, n: int) -> None:
+        for i in range(n):
+            out[out_offset + i] = a[i] ^ b[i]
 
     @staticmethod
-    def _inc32(counter_block: bytes) -> bytes:
-        y = bytearray(counter_block)
+    def _inc32(counter_block: bytearray) -> None:
+        y = counter_block
         c = (y[12] << 24) | (y[13] << 16) | (y[14] << 8) | y[15]
         c = (c + 1) & 0xFFFFFFFF
         y[12] = (c >> 24) & 0xFF
         y[13] = (c >> 16) & 0xFF
         y[14] = (c >> 8) & 0xFF
         y[15] = c & 0xFF
-        return bytes(y)
+        return None
+
+    async def _ghash_update(self, y: int, h: int, data) -> int:
+        mv = memoryview(data)
+        n = len(mv)
+        full = n & ~0xF
+        if full:
+            for i in range(0, full, 16):
+                y ^= self._from_bytes(mv[i : i + 16])
+                y = await self._gf_mul(y, h)
+                await self._ayield((i // 16) + 1, every=32, do_gc=False)
+        if n != full:
+            tail = bytearray(16)
+            tail[: n - full] = mv[full:]
+            y ^= self._from_bytes(tail)
+            y = await self._gf_mul(y, h)
+        return y
 
     @staticmethod
     async def _gf_mul(x: int, y: int) -> int:
@@ -113,23 +128,15 @@ class AesGcmCipher:
             await AesGcmCipher._ayield(i + 1, every=32, do_gc=False)
         return z
 
-    async def _ghash(self, H: bytes, associated_data: bytes, ciphertext: bytes) -> bytes:
+    async def _ghash(self, H: bytes, associated_data: bytes, ciphertext) -> bytes:
         h = self._from_bytes(H)
         y = 0
 
         if associated_data:
-            aad_padded = self._pad16(associated_data)
-            for i in range(0, len(aad_padded), 16):
-                y ^= self._from_bytes(aad_padded[i : i + 16])
-                y = await self._gf_mul(y, h)
-                await self._ayield((i // 16) + 1, every=32, do_gc=False)
+            y = await self._ghash_update(y, h, associated_data)
 
         if ciphertext:
-            c_padded = self._pad16(ciphertext)
-            for i in range(0, len(c_padded), 16):
-                y ^= self._from_bytes(c_padded[i : i + 16])
-                y = await self._gf_mul(y, h)
-                await self._ayield((i // 16) + 1, every=32, do_gc=False)
+            y = await self._ghash_update(y, h, ciphertext)
 
         aad_bits = (len(associated_data) if associated_data else 0) * 8
         c_bits = len(ciphertext) * 8
@@ -146,20 +153,22 @@ class AesGcmCipher:
             raise ValueError("Nonce must be 12 bytes")
         J0 = nonce + b"\x00\x00\x00\x01"
 
-        counter = self._inc32(J0)
+        counter = bytearray(J0)
+        self._inc32(counter)
         ciphertext = bytearray(len(plaintext))
+        plaintext_mv = memoryview(plaintext)
         i = 0
         while i < len(plaintext):
             s_i = self._aes_ecb_encrypt_block(counter, ecb)
-            block = plaintext[i : i + 16]
-            keystream = s_i[: len(block)]
-            ct_block = self._xor_bytes(block, keystream)
-            ciphertext[i : i + len(block)] = ct_block
-            i += len(block)
-            counter = self._inc32(counter)
+            block_len = 16
+            if i + 16 > len(plaintext):
+                block_len = len(plaintext) - i
+            self._xor_into(ciphertext, i, plaintext_mv[i : i + block_len], s_i, block_len)
+            i += block_len
+            self._inc32(counter)
             await self._ayield(i // 16, every=32, do_gc=False)
 
-        S = await self._ghash(H, b"", bytes(ciphertext))
+        S = await self._ghash(H, b"", ciphertext)
         tag = self._xor_bytes(self._aes_ecb_encrypt_block(J0, ecb), S)
         return bytes(ciphertext), tag
 
@@ -182,17 +191,19 @@ class AesGcmCipher:
         if mismatch != 0:
             raise ValueError("Authentication failed")
 
-        counter = self._inc32(J0)
+        counter = bytearray(J0)
+        self._inc32(counter)
         plaintext = bytearray(len(ciphertext))
+        ciphertext_mv = memoryview(ciphertext)
         i = 0
         while i < len(ciphertext):
             s_i = self._aes_ecb_encrypt_block(counter, ecb)
-            block = ciphertext[i : i + 16]
-            keystream = s_i[: len(block)]
-            pt_block = self._xor_bytes(block, keystream)
-            plaintext[i : i + len(block)] = pt_block
-            i += len(block)
-            counter = self._inc32(counter)
+            block_len = 16
+            if i + 16 > len(ciphertext):
+                block_len = len(ciphertext) - i
+            self._xor_into(plaintext, i, ciphertext_mv[i : i + block_len], s_i, block_len)
+            i += block_len
+            self._inc32(counter)
             await self._ayield(i // 16, every=32, do_gc=False)
 
         return bytes(plaintext)
