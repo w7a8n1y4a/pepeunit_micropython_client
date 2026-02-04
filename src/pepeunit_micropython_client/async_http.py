@@ -1,4 +1,5 @@
 import uasyncio as asyncio
+import utils
 
 import socket
 import gc
@@ -105,7 +106,7 @@ class _BufferedSock:
                 if self._readinto is not None:
                     n = self._readinto(self.mv[self.end :])
                     if n is None:
-                        await asyncio.sleep_ms(0)
+                        await utils.ayield(do_gc=False)
                         continue
                     if n == 0:
                         return 0
@@ -114,11 +115,11 @@ class _BufferedSock:
                 data = self.sock.read(len(self.buf) - self.end)
             except OSError as e:
                 if _is_busy_error(e):
-                    await asyncio.sleep_ms(0)
+                    await utils.ayield(do_gc=False)
                     continue
                 raise
             if data is None:
-                await asyncio.sleep_ms(0)
+                await utils.ayield(do_gc=False)
                 continue
             if data == b"":
                 return 0
@@ -206,15 +207,15 @@ async def _as_write(sock, data: bytes):
             n = sock.write(mv[off:])
         except OSError as e:
             if _is_busy_error(e):
-                await asyncio.sleep_ms(0)
+                await utils.ayield(do_gc=False)
                 continue
             raise
         if n is None or n == 0:
-            await asyncio.sleep_ms(0)
+            await utils.ayield(do_gc=False)
             continue
         off += n
         if (off & 0x3FF) == 0:
-            await asyncio.sleep_ms(0)
+            await utils.ayield(off, every=1024, do_gc=False)
 
 def _parse_status(status_line: bytes) -> int:
     # Expected: b"HTTP/1.1 200 OK\r\n"
@@ -268,7 +269,7 @@ async def request(
         except OSError as e:
             if not _is_busy_error(e):
                 raise
-        await asyncio.sleep_ms(0)
+        await utils.ayield(do_gc=False)
         if use_ssl:
             if ssl is None:
                 raise OSError("SSL not available")
@@ -334,7 +335,7 @@ async def request(
                     if chunk == b"":
                         break
                     f.write(chunk)
-                    await asyncio.sleep_ms(0)
+                    await utils.ayield(do_gc=False)
             gc.collect()
             return status, resp_headers, None
 
@@ -345,7 +346,7 @@ async def request(
                 break
             out.extend(chunk)
             if (len(out) & 0x3FF) == 0:
-                await asyncio.sleep_ms(0)
+                await utils.ayield(len(out), every=1024, do_gc=False)
         gc.collect()
         return status, resp_headers, out
     finally:

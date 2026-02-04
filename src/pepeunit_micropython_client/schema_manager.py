@@ -66,14 +66,13 @@ class SchemaManager:
 
     async def _search_uuid_in_topic_section(self, section, uuid):
         topic_section = self._schema_data.get(section, {})
-        ayield = utils.ayield
         idx = 0
         for topic_name, topic_list in topic_section.items():
             for topic_url in topic_list:
                 if self._topic_url_matches_uuid(topic_url, uuid):
                     return topic_name
                 idx += 1
-                await ayield(idx, every=32)
+                await utils.ayield(idx, every=32)
         return None
 
     def _topic_url_matches_uuid(self, topic_url, uuid):
@@ -104,12 +103,11 @@ class SchemaManager:
 
     async def _search_topic_name_in_section(self, section, topic_name):
         topic_section = self._schema_data.get(section, {})
-        ayield = utils.ayield
         idx = 0
         for topic_key, topic_list in topic_section.items():
             for topic_url in topic_list:
                 if topic_url == topic_name:
                     return topic_key
                 idx += 1
-                await ayield(idx, every=32)
+                await utils.ayield(idx, every=32)
         return None

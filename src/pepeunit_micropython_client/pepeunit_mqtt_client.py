@@ -1,5 +1,6 @@
 import time
 import uasyncio as asyncio
+import utils
 
 from mqtt_as import MQTTClient
 
@@ -225,13 +226,13 @@ class PepeunitMqttClient:
                     await self._client.subscribe(self._to_bytes(topic), qos=0)
                     idx += 1
                     if (idx & 0x0F) == 0:
-                        await asyncio.sleep_ms(0)
+                        await utils.ayield(idx, every=16, do_gc=False)
             for topic_list in self.schema_manager.input_topic.values():
                 for topic in topic_list:
                     await self._client.subscribe(self._to_bytes(topic), qos=0)
                     idx += 1
                     if (idx & 0x0F) == 0:
-                        await asyncio.sleep_ms(0)
+                        await utils.ayield(idx, every=16, do_gc=False)
             self.logger.info("Success subscribed to {} topics".format(idx))
             return True
         except Exception as e:

@@ -5,6 +5,7 @@ import time
 
 gc.collect()
 import uasyncio as asyncio
+import utils
 
 gc.collect()
 from errno import EINPROGRESS, ETIMEDOUT
@@ -20,7 +21,7 @@ BUSY_ERRORS = [EINPROGRESS, ETIMEDOUT, 118, 119] if platform == "esp32" else [EI
 
 
 async def eliza(*_):
-    await asyncio.sleep_ms(0)
+    await utils.ayield()
 
 
 def _noop(*_):
@@ -179,7 +180,7 @@ class MQTTClient:
                 size += msg_size
                 t = time.ticks_ms()
                 self.last_rx = time.ticks_ms()
-            await asyncio.sleep_ms(0)
+            await utils.ayield(do_gc=False)
         return buffer[:n]
 
     async def _as_write(self, bytes_wr, length=0, sock=None):
@@ -202,7 +203,7 @@ class MQTTClient:
             if n:
                 t = time.ticks_ms()
                 bytes_wr = bytes_wr[n:]
-            await asyncio.sleep_ms(0)
+            await utils.ayield(do_gc=False)
 
     async def _send_str(self, s):
         await self._as_write(struct.pack("!H", len(s)))
@@ -227,7 +228,7 @@ class MQTTClient:
         except OSError as e:
             if e.args[0] not in BUSY_ERRORS:
                 raise
-        await asyncio.sleep_ms(0)
+        await utils.ayield(do_gc=False)
         if self._ssl:
             try:
                 import ssl
@@ -382,7 +383,7 @@ class MQTTClient:
             res = self._sock.read(1)
         except OSError as e:
             if e.args[0] in BUSY_ERRORS:
-                await asyncio.sleep_ms(0)
+                await utils.ayield(do_gc=False)
                 return
             raise
 
@@ -525,7 +526,7 @@ class MQTTClient:
         for task in self._tasks:
             task.cancel()
         self._tasks.clear()
-        await asyncio.sleep_ms(0)
+        await utils.ayield(do_gc=False)
         if kill_skt:
             self._close()
 

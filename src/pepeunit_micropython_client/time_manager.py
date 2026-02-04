@@ -1,6 +1,6 @@
 import time
 import ntptime
-import uasyncio as asyncio
+import utils
 
 
 EPOCH_UNIX_DELTA_MS = 946684800000
@@ -29,7 +29,7 @@ class TimeManager:
             except Exception:
                 pass
             ntptime.settime()
-            await asyncio.sleep_ms(0)
+            await utils.ayield()
             self.set_epoch_base_ms(int(time.time()) * 1000 + EPOCH_UNIX_DELTA_MS)
         except Exception:
             pass

@@ -1,21 +1,12 @@
 import os
 import ubinascii as binascii
 
-import uasyncio as asyncio
-
-import gc
+import utils
 
 import ucryptolib as _cryptolib
 
 
 class AesGcmCipher:
-    @staticmethod
-    async def _ayield(counter, every=32, mem_free_threshold=8000, do_gc=False):
-        if counter % every == 0:
-            if do_gc and gc.mem_free() < mem_free_threshold:
-                gc.collect()
-            await asyncio.sleep_ms(0)
-
     def _get_key(self, key_b64: str) -> bytes:
         key = self._b64decode_to_bytes(key_b64)
         if len(key) not in (16, 24, 32):
@@ -105,7 +96,7 @@ class AesGcmCipher:
             for i in range(0, full, 16):
                 y ^= self._from_bytes(mv[i : i + 16])
                 y = await self._gf_mul(y, h)
-                await self._ayield((i // 16) + 1, every=32, do_gc=False)
+                await utils.ayield((i // 16) + 1, every=32, do_gc=False)
         if n != full:
             tail = bytearray(16)
             tail[: n - full] = mv[full:]
@@ -125,7 +116,7 @@ class AesGcmCipher:
                 v = (v >> 1) ^ R
             else:
                 v >>= 1
-            await AesGcmCipher._ayield(i + 1, every=32, do_gc=False)
+            await utils.ayield(i + 1, every=32, do_gc=False)
         return z
 
     async def _ghash(self, H: bytes, associated_data: bytes, ciphertext) -> bytes:
@@ -166,7 +157,7 @@ class AesGcmCipher:
             self._xor_into(ciphertext, i, plaintext_mv[i : i + block_len], s_i, block_len)
             i += block_len
             self._inc32(counter)
-            await self._ayield(i // 16, every=32, do_gc=False)
+            await utils.ayield(i // 16, every=32, do_gc=False)
 
         S = await self._ghash(H, b"", ciphertext)
         tag = self._xor_bytes(self._aes_ecb_encrypt_block(J0, ecb), S)
@@ -204,6 +195,6 @@ class AesGcmCipher:
             self._xor_into(plaintext, i, ciphertext_mv[i : i + block_len], s_i, block_len)
             i += block_len
             self._inc32(counter)
-            await self._ayield(i // 16, every=32, do_gc=False)
+            await utils.ayield(i // 16, every=32, do_gc=False)
 
         return bytes(plaintext)

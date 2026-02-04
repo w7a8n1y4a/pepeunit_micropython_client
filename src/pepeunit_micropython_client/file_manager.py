@@ -3,16 +3,9 @@ import os
 import gc
 from shutil import shutil as shutil
 
-import uasyncio as asyncio
+import utils
 
 class FileManager:
-    @staticmethod
-    async def _ayield(counter, every=32, mem_free_threshold=8000, do_gc=True):
-        if counter % every == 0:
-            if do_gc and gc.mem_free() < mem_free_threshold:
-                gc.collect()
-            await asyncio.sleep_ms(0)
-
     @staticmethod
     async def _ensure_dir(path, *, yield_every=32):
         if not path:
@@ -33,7 +26,7 @@ class FileManager:
                 os.mkdir(cur)
             except OSError:
                 pass
-            await FileManager._ayield(idx, every=yield_every, do_gc=False)
+            await utils.ayield(idx, every=yield_every, do_gc=False)
 
     @staticmethod
     async def read_json(file_path):
@@ -48,7 +41,7 @@ class FileManager:
 
         with open(file_path, 'w') as f:
             json.dump(data, f)
-        await FileManager._ayield(0, every=1, do_gc=True)
+        await utils.ayield(0, every=1, do_gc=True)
 
     @staticmethod
     async def file_exists(file_path):
@@ -91,7 +84,7 @@ class FileManager:
         except Exception:
             pass
 
-        await FileManager._ayield(0, every=1, do_gc=False)
+        await utils.ayield(0, every=1, do_gc=False)
         await FileManager.trim_ndjson(file_path, max_lines, yield_every=yield_every)
 
     @staticmethod
@@ -108,7 +101,7 @@ class FileManager:
                     res = on_line(line)
                     if res is not None and hasattr(res, "send"):
                         await res
-                    await FileManager._ayield(idx, every=yield_every, do_gc=False)
+                    await utils.ayield(idx, every=yield_every, do_gc=False)
         except Exception:
             return
 
@@ -135,7 +128,7 @@ class FileManager:
                     total += 1
                     tail[ti] = line
                     ti = (ti + 1) % max_lines
-                    await FileManager._ayield(total, every=yield_every, do_gc=False)
+                    await utils.ayield(total, every=yield_every, do_gc=False)
             if total <= max_lines:
                 return
             tmp_path = file_path + '.tmp'
@@ -147,10 +140,10 @@ class FileManager:
                     if line is not None:
                         dst.write(line)
                     idx += 1
-                    await FileManager._ayield(idx, every=yield_every, do_gc=False)
+                    await utils.ayield(idx, every=yield_every, do_gc=False)
             await FileManager._move(tmp_path, file_path)
             gc.collect()
-            await asyncio.sleep_ms(0)
+            await utils.ayield(0, every=1, do_gc=False)
         except Exception:
             pass
 
@@ -185,8 +178,8 @@ class FileManager:
                     except Exception:
                         pass
 
-                await FileManager._ayield(idx, every=yield_every, do_gc=True)
+                await utils.ayield(idx, every=yield_every, do_gc=True)
 
         gc.collect()
-        await asyncio.sleep_ms(0)
+        await utils.ayield(0, every=1, do_gc=False)
 
