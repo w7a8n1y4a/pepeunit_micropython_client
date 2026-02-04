@@ -175,11 +175,7 @@ class PepeunitClient:
         self.logger.info('Success download update archive', file_only=True)
 
         unit_directory = self.env_file_path[: self.env_file_path.rfind('/')] if '/' in self.env_file_path else ''
-        try:
-            await FileManager.extract_tar_gz(tmp, unit_directory, copy_chunk=128, yield_every=8)
-        except Exception:
-
-            self._extract_tar_gz_sync(tmp, unit_directory)
+        await FileManager.extract_tar_gz(tmp, unit_directory, copy_chunk=128, yield_every=8)
         self.logger.info('Success extract archive', file_only=True)
         gc.collect()
 
@@ -208,50 +204,6 @@ class PepeunitClient:
         asyncio.create_task(_trim_and_send(topic))
         self.logger.info('Scheduled log sync to MQTT')
 
-
-    def _extract_tar_gz_sync(self, tgz_path, dest_root):
-        import tarfile
-        import deflate
-        from shutil import shutil as shutil
-
-        def _ensure_dir(path):
-            if not path:
-                return
-            parts = []
-            if path.startswith('/'):
-                base = '/'
-                rest = path[1:]
-            else:
-                base = ''
-                rest = path
-            for p in rest.split('/'):
-                parts.append(p)
-                cur = (base + '/'.join(parts)) if base else '/'.join(parts)
-                try:
-                    os.mkdir(cur)
-                except OSError:
-                    pass
-
-        _ensure_dir(dest_root)
-        with open(tgz_path, 'rb') as tgz:
-            tar_file = deflate.DeflateIO(tgz, deflate.AUTO, 9)
-            unpack_tar = tarfile.TarFile(fileobj=tar_file)
-            for unpack_file in unpack_tar:
-                if unpack_file.type == tarfile.DIRTYPE or '@PaxHeader' in unpack_file.name:
-                    continue
-                out_path = dest_root + '/' + unpack_file.name[2:]
-                _ensure_dir(out_path[: out_path.rfind('/')])
-                subf = unpack_tar.extractfile(unpack_file)
-                try:
-                    with open(out_path, 'wb') as outf:
-                        shutil.copyfileobj(subf, outf, length=256)
-                        outf.close()
-                finally:
-                    try:
-                        if subf:
-                            subf.close()
-                    except Exception:
-                        pass
 
     def _subscribe_all_schema_topics_now(self):
         self.mqtt_client.subscribe_all_schema_topics()

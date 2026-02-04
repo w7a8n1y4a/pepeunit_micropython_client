@@ -100,9 +100,6 @@ class PepeunitMqttClient:
         if reason:
             self.logger.warning("MQTT force disconnect: {}".format(reason), file_only=True)
 
-    def get_last_error(self):
-        return self._last_error
-
     def _reconnect_interval_ms(self, attempt):
         if attempt <= 0:
             return 0
@@ -184,12 +181,6 @@ class PepeunitMqttClient:
 
     def set_input_handler(self, handler):
         self._input_handler = handler
-
-    def drop_input(self):
-        return _InputDropContext(self)
-
-    def is_drop_input_active(self):
-        return bool(self._drop_input_refcount)
 
     async def connect(self):
         if self.is_connected():
