@@ -71,7 +71,7 @@ class PepeunitRestClient:
         headers = self._get_auth_headers(with_json=True)
 
         payload = json.dumps({'state': state})
-        status, _, _ = await request("POST", url, headers=headers, body=payload, max_body=2048)
+        status, _, _ = await request("POST", url, headers=headers, body=payload)
         self._raise_for_status(status)
         gc.collect()
 
@@ -79,7 +79,7 @@ class PepeunitRestClient:
         url = self._get_base_url() + '/units/get_state_storage/' + self.settings.unit_uuid
         headers = self._get_auth_headers()
 
-        status, _, body = await request("GET", url, headers=headers, max_body=4096)
+        status, _, body = await request("GET", url, headers=headers)
         self._raise_for_status(status, body)
         return utils.to_str(body)
 
@@ -103,7 +103,6 @@ class PepeunitRestClient:
             "GET",
             url,
             headers=headers,
-            max_body=16_000,
             collect_headers=False,
         )
         self._raise_for_status(status, body)
@@ -139,7 +138,6 @@ class PepeunitRestClient:
             "GET",
             url,
             headers=headers,
-            max_body=32_000,
             collect_headers=False,
         )
         self._raise_for_status(status, body)
