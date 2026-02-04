@@ -4,31 +4,12 @@ import utils
 import socket
 import gc
 
-try:
-    import ussl as ssl
-except ImportError:
-    try:
-        import ssl
-    except ImportError:
-        ssl = None
+import ssl
 
-try:
-    import sys
+import sys
+from errno import EINPROGRESS, ETIMEDOUT
 
-    platform = getattr(sys, "platform", "")
-except Exception:
-    platform = ""
-
-EINPROGRESS = 115
-ETIMEDOUT = 110
-try:
-    from errno import EINPROGRESS as _EINPROGRESS, ETIMEDOUT as _ETIMEDOUT
-
-    EINPROGRESS = _EINPROGRESS
-    ETIMEDOUT = _ETIMEDOUT
-except ImportError:
-    pass
-
+platform = sys.platform
 
 ESP32 = platform == "esp32"
 RP2 = platform == "rp2"
@@ -42,7 +23,7 @@ else:
 
 def _is_busy_error(e: OSError) -> bool:
     # MicroPython uses numeric errno in e.args[0].
-    return bool(getattr(e, "args", None)) and e.args[0] in BUSY_ERRORS
+    return bool(e.args) and e.args[0] in BUSY_ERRORS
 
 
 def _parse_url(url: str):
@@ -54,24 +35,11 @@ def _parse_url(url: str):
     path = "/" + path
     if ":" in host_port:
         host, port_s = host_port.rsplit(":", 1)
-        try:
-            port = int(port_s)
-        except Exception:
-            port = 443 if scheme == "https" else 80
+        port = int(port_s)
     else:
         host = host_port
         port = 443 if scheme == "https" else 80
     return scheme, host, port, path
-
-
-def _to_bytes(v) -> bytes:
-    if v is None:
-        return b""
-    if isinstance(v, bytes):
-        return v
-    if isinstance(v, str):
-        return v.encode("utf-8")
-    return str(v).encode("utf-8")
 
 
 class _BufferedSock:
@@ -81,7 +49,7 @@ class _BufferedSock:
         self.mv = memoryview(self.buf)
         self.start = 0
         self.end = 0
-        self._readinto = getattr(sock, "readinto", None)
+        self._readinto = sock.readinto
 
     def _compact(self):
         if self.start == 0:
@@ -103,30 +71,19 @@ class _BufferedSock:
 
         while True:
             try:
-                if self._readinto is not None:
-                    n = self._readinto(self.mv[self.end :])
-                    if n is None:
-                        await utils.ayield(do_gc=False)
-                        continue
-                    if n == 0:
-                        return 0
-                    self.end += n
-                    return n
-                data = self.sock.read(len(self.buf) - self.end)
+                n = self._readinto(self.mv[self.end :])
+                if n is None:
+                    await utils.ayield(do_gc=False)
+                    continue
+                if n == 0:
+                    return 0
+                self.end += n
+                return n
             except OSError as e:
                 if _is_busy_error(e):
                     await utils.ayield(do_gc=False)
                     continue
                 raise
-            if data is None:
-                await utils.ayield(do_gc=False)
-                continue
-            if data == b"":
-                return 0
-            n = len(data)
-            self.buf[self.end : self.end + n] = data
-            self.end += n
-            return n
 
     async def readline(self, limit=2048) -> bytes:
         out = bytearray()
@@ -227,10 +184,7 @@ def _parse_status(status_line: bytes) -> int:
         sp2 = status_line.find(b"\r", sp1 + 1)
     if sp2 < 0:
         sp2 = len(status_line)
-    try:
-        return int(status_line[sp1 + 1 : sp2])
-    except Exception:
-        return 0
+    return int(status_line[sp1 + 1 : sp2])
 
 
 async def request(
@@ -271,18 +225,14 @@ async def request(
                 raise
         await utils.ayield(do_gc=False)
         if use_ssl:
-            if ssl is None:
-                raise OSError("SSL not available")
             s = ssl.wrap_socket(s, server_hostname=host)
 
-        b = b""
-        if body is not None:
-            b = body if isinstance(body, bytes) else _to_bytes(body)
+        b = utils.to_bytes(body) if body is not None else b""
 
         # Stream request to socket (no big request buffer).
-        method_b = _to_bytes(method)
-        path_b = _to_bytes(path)
-        host_b = _to_bytes(host)
+        method_b = utils.to_bytes(method)
+        path_b = utils.to_bytes(path)
+        host_b = utils.to_bytes(host)
 
         await _as_write(s, method_b)
         await _as_write(s, b" ")
@@ -292,9 +242,9 @@ async def request(
         await _as_write(s, b"\r\nConnection: close\r\n")
 
         for k, v in headers.items():
-            await _as_write(s, _to_bytes(k))
+            await _as_write(s, utils.to_bytes(k))
             await _as_write(s, b": ")
-            await _as_write(s, _to_bytes(v))
+            await _as_write(s, utils.to_bytes(v))
             await _as_write(s, b"\r\n")
 
         if b:
@@ -350,8 +300,5 @@ async def request(
         gc.collect()
         return status, resp_headers, out
     finally:
-        try:
-            s.close()
-        except Exception:
-            pass
+        s.close()
 

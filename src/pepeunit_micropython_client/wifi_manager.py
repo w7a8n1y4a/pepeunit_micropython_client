@@ -1,6 +1,7 @@
 import time
 import network
 import uasyncio as asyncio
+import sys
 
 import utils
 
@@ -9,6 +10,8 @@ from .logger import Logger
 
 
 class WifiManager:
+    _PLATFORM = sys.platform
+
     def __init__(self, settings: Settings, logger: Logger):
         self.logger = logger
         self.settings = settings
@@ -16,14 +19,12 @@ class WifiManager:
 
     @staticmethod
     def _decode_ssid(value):
-        if isinstance(value, bytes):
-            try:
-                return value.decode()
-            except Exception:
-                return ""
-        if value is None:
-            return ""
-        return str(value)
+        return utils.to_str(value)
+
+    @classmethod
+    def _set_reconnects(cls, sta):
+        if cls._PLATFORM in ("esp32", "rp2"):
+            sta.config(reconnects=0)
 
     def get_sta(self):
         if self._sta is None:
@@ -31,10 +32,7 @@ class WifiManager:
             sta = network.WLAN(network.STA_IF)
             if not sta.active():
                 sta.active(True)
-            try:
-                sta.config(reconnects=0)
-            except Exception:
-                pass
+            self._set_reconnects(sta)
             self._sta = sta
         return self._sta
 
@@ -43,33 +41,16 @@ class WifiManager:
 
     def get_connected_ssid(self):
         sta = self.get_sta()
-        for key in ("essid", "ssid"):
-            try:
-                return self._decode_ssid(sta.config(key))
-            except Exception:
-                pass
-        return ""
+        return self._decode_ssid(sta.config("essid"))
 
     async def _force_sta_reset(self):
         self.logger.info("WiFi station prepare", file_only=True)
         sta = self.get_sta()
-        try:
-            sta.disconnect()
-        except Exception:
-            pass
-        try:
-            sta.active(False)
-        except Exception:
-            pass
+        sta.disconnect()
+        sta.active(False)
         await asyncio.sleep_ms(200)
-        try:
-            sta.active(True)
-        except Exception:
-            pass
-        try:
-            sta.config(reconnects=0)
-        except Exception:
-            pass
+        sta.active(True)
+        self._set_reconnects(sta)
         await asyncio.sleep_ms(200)
 
     async def scan_has_target_ssid(self):
@@ -127,13 +108,14 @@ class WifiManager:
                     await self._force_sta_reset()
                     attempt += 1
                     continue
-                try:
-                    self.logger.warning("WiFi connected: " + str(self.get_sta().ifconfig()), file_only=True)
-                except Exception:
-                    self.logger.warning("WiFi connected", file_only=True)
+                self.logger.warning("WiFi connected: " + str(self.get_sta().ifconfig()), file_only=True)
                 return True
 
-            wait_ms = self._reconnection_interval_ms(attempt)
+            wait_ms = utils.backoff_interval_ms(
+                attempt,
+                5000,
+                self.settings.PUC_MAX_RECONNECTION_INTERVAL,
+            )
 
             try:
                 found = await self.scan_has_target_ssid()
@@ -158,12 +140,3 @@ class WifiManager:
         if not self.is_connected():
             return await self.connect_forever(connect_timeout_ms=connect_timeout_ms)
         return True
-
-    def _reconnection_interval_ms(self, attempt):
-        if attempt <= 0:
-            return 0
-        base = 5000
-        interval = base * (2 ** (attempt - 1))
-        if interval > self.settings.PUC_MAX_RECONNECTION_INTERVAL:
-            return self.settings.PUC_MAX_RECONNECTION_INTERVAL
-        return int(interval)

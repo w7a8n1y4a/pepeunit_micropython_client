@@ -19,23 +19,15 @@ def rmtree(d):
 
 
 def copyfileobj(src, dest, length=512):
-    if hasattr(src, "readinto"):
-        buf = bytearray(length)
-        while True:
-            sz = src.readinto(buf)
-            if not sz:
-                break
-            if sz == length:
-                dest.write(buf)
-            else:
-                b = memoryview(buf)[:sz]
-                dest.write(b)
-    else:
-        while True:
-            buf = src.read(length)
-            if not buf:
-                break
+    buf = bytearray(length)
+    while True:
+        sz = src.readinto(buf)
+        if not sz:
+            break
+        if sz == length:
             dest.write(buf)
+        else:
+            dest.write(memoryview(buf)[:sz])
 
 
 def disk_usage(path):

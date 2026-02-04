@@ -49,13 +49,6 @@ class PepeunitMqttClient:
         self._just_reconnected = False
         self._last_error = None
 
-    def _to_bytes(self, v):
-        if v is None:
-            return b""
-        if isinstance(v, bytes):
-            return v
-        return str(v).encode("utf-8")
-
     def set_wifi_manager(self, wifi_manager):
         self._wifi_manager = wifi_manager
 
@@ -63,25 +56,19 @@ class PepeunitMqttClient:
         cli = self._client
         if cli is None:
             return False
-        isconn = getattr(cli, "isconnected", None)
-        if not isconn:
-            return False
-        try:
-            return bool(isconn())
-        except Exception:
-            return False
+        return bool(cli.isconnected())
 
     def get_last_rx_ms(self):
         cli = self._client
         if cli is None:
             return None
-        return getattr(cli, "last_rx", None)
+        return cli.last_rx
 
     def get_ping_interval_ms(self):
         cli = self._client
         if cli is None:
             return int(self.settings.PU_MQTT_PING_INTERVAL) * 1000
-        val = getattr(cli, "_ping_interval", None)
+        val = cli._ping_interval
         if val is None:
             return int(self.settings.PU_MQTT_PING_INTERVAL) * 1000
         return val
@@ -90,31 +77,14 @@ class PepeunitMqttClient:
         cli = self._client
         if cli is None:
             return
-        try:
-            reconnect = getattr(cli, "_reconnect", None)
-            if reconnect:
-                reconnect()
-            close = getattr(cli, "_close", None)
-            if close:
-                close()
-        except Exception:
-            pass
+        cli._reconnect()
+        cli._close()
         self._client = None
         self._just_reconnected = False
         if reason:
             self._last_error = reason
         if reason:
             self.logger.warning("MQTT force disconnect: {}".format(reason), file_only=True)
-
-    def _reconnect_interval_ms(self, attempt):
-        if attempt <= 0:
-            return 0
-        base = 5000
-        interval = base * (2 ** (attempt - 1))
-        max_wait = self.settings.PUC_MAX_RECONNECTION_INTERVAL
-        if interval > max_wait:
-            return max_wait
-        return int(interval)
 
     def consume_reconnected(self):
         if not self._just_reconnected:
@@ -156,7 +126,11 @@ class PepeunitMqttClient:
         except Exception as e:
             self._last_error = e
             self._reconnect_attempt += 1
-            wait_ms = self._reconnect_interval_ms(self._reconnect_attempt)
+            wait_ms = utils.backoff_interval_ms(
+                self._reconnect_attempt,
+                5000,
+                self.settings.PUC_MAX_RECONNECTION_INTERVAL,
+            )
             self._next_reconnect_ms = time.ticks_add(now, wait_ms)
             self.logger.warning(
                 "MQTT reconnect failed: {}, next try in {} ms".format(e, wait_ms),
@@ -172,10 +146,7 @@ class PepeunitMqttClient:
         if self._input_handler is None:
             return
         m = self._msg
-        try:
-            m.topic = topic.decode("utf-8") if isinstance(topic, (bytes, bytearray, memoryview)) else topic
-        except Exception:
-            m.topic = str(topic)
+        m.topic = utils.to_str(topic)
         m.payload = msg
         m.retained = retained
         m.properties = properties
@@ -197,11 +168,11 @@ class PepeunitMqttClient:
         self._client = MQTTClient(
             server=self.settings.PU_MQTT_HOST,
             port=self.settings.PU_MQTT_PORT,
-            user=self._to_bytes(self.settings.PU_AUTH_TOKEN),
+            user=utils.to_bytes(self.settings.PU_AUTH_TOKEN),
             password=b"",
             keepalive=self.settings.PU_MQTT_KEEPALIVE,
             ping_interval=self.settings.PU_MQTT_PING_INTERVAL,
-            client_id=self._to_bytes(self.settings.unit_uuid),
+            client_id=utils.to_bytes(self.settings.unit_uuid),
             subs_cb=self._on_message,
         )
         await self._client.connect()
@@ -223,13 +194,13 @@ class PepeunitMqttClient:
             idx = 0
             for topic_list in self.schema_manager.input_base_topic.values():
                 for topic in topic_list:
-                    await self._client.subscribe(self._to_bytes(topic), qos=0)
+                    await self._client.subscribe(utils.to_bytes(topic), qos=0)
                     idx += 1
                     if (idx & 0x0F) == 0:
                         await utils.ayield(idx, every=16, do_gc=False)
             for topic_list in self.schema_manager.input_topic.values():
                 for topic in topic_list:
-                    await self._client.subscribe(self._to_bytes(topic), qos=0)
+                    await self._client.subscribe(utils.to_bytes(topic), qos=0)
                     idx += 1
                     if (idx & 0x0F) == 0:
                         await utils.ayield(idx, every=16, do_gc=False)
@@ -245,7 +216,7 @@ class PepeunitMqttClient:
             self._last_error = "publish while disconnected"
             return False
         try:
-            await self._client.publish(self._to_bytes(topic), self._to_bytes(message), retain=retain, qos=qos)
+            await self._client.publish(utils.to_bytes(topic), utils.to_bytes(message), retain=retain, qos=qos)
             return True
         except Exception as e:
             self._last_error = e

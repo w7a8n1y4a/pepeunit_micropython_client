@@ -4,6 +4,7 @@ import gc
 import machine
 import os
 import uasyncio as asyncio
+import utils
 
 from .time_manager import TimeManager
 from .settings import Settings
@@ -78,13 +79,10 @@ class PepeunitClient:
             'pu_commit_version': self.settings.PU_COMMIT_VERSION
         }
 
-        try:
-            if self.wifi_manager:
-                state['ifconfig'] = self.wifi_manager.get_sta().ifconfig()
-            else:
-                state['ifconfig'] = self.sta.ifconfig()
-        except Exception:
-            pass
+        if self.wifi_manager:
+            state['ifconfig'] = self.wifi_manager.get_sta().ifconfig()
+        elif self.sta is not None:
+            state['ifconfig'] = self.sta.ifconfig()
 
         return state
 
@@ -95,11 +93,7 @@ class PepeunitClient:
             try:
                 self._base_mqtt_input_func(msg)
                 if self.mqtt_input_handler:
-                    res = self.mqtt_input_handler(self, msg)
-
-
-                    if res is not None and hasattr(res, "send"):
-                        asyncio.create_task(res)
+                    utils.spawn(self.mqtt_input_handler(self, msg))
             finally:
                 self._last_state_send = time.ticks_ms()
                 self._in_mqtt_callback = False
@@ -144,9 +138,7 @@ class PepeunitClient:
         payload = json.loads(msg.payload) if msg.payload else {}
 
         if self.custom_update_handler:
-            res = self.custom_update_handler(self, payload)
-            if res is not None and hasattr(res, "send"):
-                asyncio.create_task(res)
+            utils.spawn(self.custom_update_handler(self, payload))
             return
 
         async def _do_update():
@@ -164,10 +156,7 @@ class PepeunitClient:
             if self.restart_mode != RestartMode.NO_RESTART:
                 self.restart_device()
 
-        try:
-            asyncio.create_task(_do_update())
-        except Exception as e:
-            self.logger.error("Failed to schedule update task: {}".format(e), file_only=True)
+        asyncio.create_task(_do_update())
 
     async def perform_update(self):
         tmp = '/update_' + self.settings.unit_uuid + '.tgz'
@@ -249,22 +238,13 @@ class PepeunitClient:
                         self._resubscribe_requested = True
                 if self._resubscribe_requested and not self._in_mqtt_callback:
                     try:
-
-                        subscribe_all = getattr(self.mqtt_client, "subscribe_all_schema_topics", None)
-                        if subscribe_all:
-                            if self.mqtt_client.is_connected():
-                                res = subscribe_all()
-                                if res is not None:
-                                    await res
+                        if self.mqtt_client.is_connected():
+                            await self.mqtt_client.subscribe_all_schema_topics()
                     finally:
                         self._resubscribe_requested = False
 
                 if self.mqtt_output_handler:
-                    res = self.mqtt_output_handler(self)
-
-
-                    if res is not None and hasattr(res, "send"):
-                        await res
+                    await utils.maybe_await(self.mqtt_output_handler(self))
 
                 self._base_mqtt_output_handler()
 
@@ -283,16 +263,7 @@ class PepeunitClient:
         self._running = False
 
     def restart_device(self):
-        try:
-            self.logger.warning("Restart: I`ll be back", file_only=True)
-        except Exception:
-            pass
-        try:
-            time.sleep(1)
-        except Exception:
-            pass
-        try:
-            machine.reset()
-        except Exception:
-            pass
+        self.logger.warning("Restart: I`ll be back", file_only=True)
+        time.sleep(1)
+        machine.reset()
 

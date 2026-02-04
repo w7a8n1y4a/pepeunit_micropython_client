@@ -1,6 +1,6 @@
 import gc
 import ujson as json
-import uasyncio as asyncio
+import utils
 
 from .async_http import request
 
@@ -35,10 +35,7 @@ class PepeunitRestClient:
             return
         if body is None:
             raise OSError("HTTP error {}".format(status))
-        try:
-            body_text = body.decode("utf-8") if isinstance(body, (bytes, bytearray)) else body
-        except Exception:
-            body_text = body
+        body_text = utils.to_str(body)
         raise OSError("HTTP error {}: {}".format(status, body_text))
 
     async def _download_file(self, url, headers, file_path):
@@ -84,11 +81,7 @@ class PepeunitRestClient:
 
         status, _, body = await request("GET", url, headers=headers, max_body=4096)
         self._raise_for_status(status, body)
-
-        try:
-            return body.decode("utf-8") if isinstance(body, (bytes, bytearray)) else body
-        except Exception:
-            return body
+        return utils.to_str(body)
 
     async def get_input_by_output(self, topic, limit=10, offset=0):
         first_sep = topic.find('/')

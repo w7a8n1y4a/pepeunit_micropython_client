@@ -98,9 +98,7 @@ class FileManager:
                     line = line.strip()
                     if not line:
                         continue
-                    res = on_line(line)
-                    if res is not None and hasattr(res, "send"):
-                        await res
+                    await utils.maybe_await(on_line(line))
                     await utils.ayield(idx, every=yield_every, do_gc=False)
         except Exception:
             return
