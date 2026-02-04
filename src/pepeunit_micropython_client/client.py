@@ -176,7 +176,7 @@ class PepeunitClient:
 
         unit_directory = self.env_file_path[: self.env_file_path.rfind('/')] if '/' in self.env_file_path else ''
         try:
-            await FileManager.extract_tar_gz(tmp, unit_directory, copy_chunk=256, yield_every=16)
+            await FileManager.extract_tar_gz(tmp, unit_directory, copy_chunk=128, yield_every=8)
         except Exception:
 
             self._extract_tar_gz_sync(tmp, unit_directory)
@@ -275,23 +275,15 @@ class PepeunitClient:
 
     def _base_mqtt_output_handler(self):
         current_time = self.time_manager.get_epoch_ms()
-        if BaseOutputTopicType.STATE_PEPEUNIT in self.schema.output_base_topic:
+        if self.mqtt_client and BaseOutputTopicType.STATE_PEPEUNIT in self.schema.output_base_topic:
             if (current_time - self._last_state_send) / 1000 >= self.settings.PU_STATE_SEND_INTERVAL:
                 topic = self.schema.output_base_topic[BaseOutputTopicType.STATE_PEPEUNIT][0]
-                state_data = self.get_system_state()
+                state_payload = self.get_system_state()
 
-                if gc.mem_free() < getattr(self.settings, "PU_STATE_MQTT_MIN_FREE", 6000):
+                if gc.mem_free() < 6000:
                     self._last_state_send = current_time
                     return
-                cli = getattr(self.mqtt_client, "_client", None)
-                if cli is None:
-                    self._last_state_send = current_time
-                    return
-                isconn = getattr(cli, "isconnected", None)
-                if isconn and not isconn():
-                    self._last_state_send = current_time
-                    return
-                asyncio.create_task(self.mqtt_client.publish(topic, json.dumps(state_data)))
+                asyncio.create_task(self.mqtt_client.publish(topic, json.dumps(state_payload)))
                 self._last_state_send = current_time
 
     async def run_main_cycle(self, cycle_ms=20):

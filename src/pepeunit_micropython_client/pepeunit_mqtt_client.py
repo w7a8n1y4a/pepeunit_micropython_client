@@ -107,7 +107,7 @@ class PepeunitMqttClient:
             return 0
         base = 5000
         interval = base * (2 ** (attempt - 1))
-        max_wait = getattr(self.settings, "PUC_MAX_RECONNECTION_INTERVAL", 60000)
+        max_wait = self.settings.PUC_MAX_RECONNECTION_INTERVAL
         if interval > max_wait:
             return max_wait
         return int(interval)
@@ -205,7 +205,7 @@ class PepeunitMqttClient:
         )
         await self._client.connect()
 
-        self.logger.info("Connected to MQTT Broker (mqtt_as)")
+        self.logger.info("Connected to MQTT Broker")
 
     async def disconnect(self):
         if self._client is None:
@@ -214,9 +214,6 @@ class PepeunitMqttClient:
             await self._client.disconnect()
         finally:
             self._client = None
-
-    def _get_all_schema_topics(self):
-        raise NotImplementedError("Use subscribe_all_schema_topics() streaming implementation.")
 
     async def subscribe_all_schema_topics(self):
         if not self.is_connected():
@@ -235,27 +232,11 @@ class PepeunitMqttClient:
                     idx += 1
                     if (idx & 0x0F) == 0:
                         await asyncio.sleep_ms(0)
+            self.logger.info("Success subscribed to {} topics".format(idx))
             return True
         except Exception as e:
             self._last_error = e
             self.mark_disconnected("subscribe all failed: {}".format(e))
-            return False
-
-    async def subscribe_topics(self, topics):
-        if not self.is_connected():
-            return False
-        try:
-            topics = topics or ()
-            idx = 0
-            for topic in topics:
-                await self._client.subscribe(self._to_bytes(topic), qos=0)
-                idx += 1
-                if (idx & 0x0F) == 0:
-                    await asyncio.sleep_ms(0)
-            return True
-        except Exception as e:
-            self._last_error = e
-            self.mark_disconnected("subscribe failed: {}".format(e))
             return False
 
     async def publish(self, topic, message, retain=False, qos=0):
