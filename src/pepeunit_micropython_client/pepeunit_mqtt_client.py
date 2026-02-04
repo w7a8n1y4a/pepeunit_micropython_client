@@ -24,6 +24,12 @@ class _InputDropContext:
         self._client._drop_input_refcount = cnt if cnt > 0 else 0
         return False
 
+    async def __aenter__(self):
+        return self.__enter__()
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return self.__exit__(exc_type, exc, tb)
+
 
 class PepeunitMqttClient:
     def __init__(self, settings, schema_manager, logger):
@@ -181,6 +187,9 @@ class PepeunitMqttClient:
 
     def set_input_handler(self, handler):
         self._input_handler = handler
+
+    def drop_input(self):
+        return _InputDropContext(self)
 
     async def connect(self):
         if self.is_connected():
