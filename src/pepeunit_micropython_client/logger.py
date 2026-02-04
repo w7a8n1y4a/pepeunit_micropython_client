@@ -36,24 +36,18 @@ class Logger:
 
         if self.ff_console_log_enable:
             print(log_entry)
-
         try:
             asyncio.create_task(
-                FileManager.append_ndjson_with_limit(self.log_file_path, log_entry, self.settings.PU_MAX_LOG_LENGTH)
+                    FileManager.append_ndjson_with_limit(self.log_file_path, log_entry, self.settings.PU_MAX_LOG_LENGTH)
             )
         except Exception:
             pass
+
         if not file_only and self.mqtt_client and BaseOutputTopicType.LOG_PEPEUNIT in self.schema_manager.output_base_topic:
+            if gc.mem_free() < 8192:
+                return
             topic = self.schema_manager.output_base_topic[BaseOutputTopicType.LOG_PEPEUNIT][0]
             try:
-                if gc.mem_free() < getattr(self.settings, "PU_LOG_MQTT_MIN_FREE", 8000):
-                    return
-                cli = getattr(self.mqtt_client, "_client", None)
-                if cli is None:
-                    return
-                isconn = getattr(cli, "isconnected", None)
-                if isconn and not isconn():
-                    return
                 asyncio.create_task(self.mqtt_client.publish(topic, log_entry))
             except Exception:
                 pass
