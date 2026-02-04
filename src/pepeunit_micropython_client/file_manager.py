@@ -83,7 +83,10 @@ class FileManager:
 
         try:
             with open(file_path, 'a') as f:
-                json.dump(item, f)
+                if isinstance(item, str):
+                    f.write(item)
+                else:
+                    json.dump(item, f)
                 f.write('\n')
         except Exception:
             pass

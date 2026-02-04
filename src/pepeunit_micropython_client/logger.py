@@ -25,12 +25,14 @@ class Logger:
         if not self._should_log(level_str):
             return
 
-        log_entry = {
-            'level': level_str,
-            'text': message,
-            'create_datetime': self.time_manager.get_epoch_ms(),
-            'free_mem': gc.mem_free()
-        }
+        create_datetime = self.time_manager.get_epoch_ms()
+        free_mem = gc.mem_free()
+        log_entry = '{"level":"%s","text":%s,"create_datetime":%d,"free_mem":%d}' % (
+            level_str,
+            json.dumps(message),
+            create_datetime,
+            free_mem,
+        )
 
         if self.ff_console_log_enable:
             print(log_entry)
@@ -52,7 +54,7 @@ class Logger:
                 isconn = getattr(cli, "isconnected", None)
                 if isconn and not isconn():
                     return
-                asyncio.create_task(self.mqtt_client.publish(topic, json.dumps(log_entry)))
+                asyncio.create_task(self.mqtt_client.publish(topic, log_entry))
             except Exception:
                 pass
 
@@ -74,17 +76,3 @@ class Logger:
     def reset_log(self):
         with open(self.log_file_path, 'w') as f:
             pass
-
-    def iter_log(self):
-        try:
-            with open(self.log_file_path, "r") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        yield json.loads(line)
-                    except Exception:
-                        continue
-        except Exception:
-            return

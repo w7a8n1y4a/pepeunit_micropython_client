@@ -32,6 +32,7 @@ class PepeunitMqttClient:
 
         self._input_handler = None
         self._drop_input_refcount = 0
+        self._msg = _Msg()
 
         self._client = None
         self._wifi_manager = None
@@ -166,7 +167,7 @@ class PepeunitMqttClient:
             return
         if self._input_handler is None:
             return
-        m = _Msg()
+        m = self._msg
         try:
             m.topic = topic.decode("utf-8") if isinstance(topic, (bytes, bytearray, memoryview)) else topic
         except Exception:
