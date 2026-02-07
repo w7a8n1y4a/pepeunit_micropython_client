@@ -1,5 +1,4 @@
 import time
-import uasyncio as asyncio
 import utils
 
 from mqtt_as import MQTTClient
@@ -47,42 +46,24 @@ class PepeunitMqttClient:
         self._next_reconnect_ms = 0
         self._reconnect_in_progress = False
         self._just_reconnected = False
-        self._last_error = None
 
     def set_wifi_manager(self, wifi_manager):
         self._wifi_manager = wifi_manager
 
     def is_connected(self):
-        cli = self._client
-        if cli is None:
-            return False
-        return bool(cli.isconnected())
+        return self._client.isconnected() if self._client else False
 
     def get_last_rx_ms(self):
-        cli = self._client
-        if cli is None:
-            return None
-        return cli.last_rx
-
-    def get_ping_interval_ms(self):
-        cli = self._client
-        if cli is None:
-            return int(self.settings.PU_MQTT_PING_INTERVAL) * 1000
-        val = cli._ping_interval
-        if val is None:
-            return int(self.settings.PU_MQTT_PING_INTERVAL) * 1000
-        return val
+        return self._client.last_rx if self._client else None
 
     def mark_disconnected(self, reason=None):
-        cli = self._client
-        if cli is None:
+        if not self._client:
             return
-        cli._reconnect()
-        cli._close()
+        
+        self._client._reconnect()
         self._client = None
         self._just_reconnected = False
-        if reason:
-            self._last_error = reason
+
         if reason:
             self.logger.warning("MQTT force disconnect: {}".format(reason), file_only=True)
 
@@ -94,57 +75,64 @@ class PepeunitMqttClient:
 
     async def ensure_connected(self):
         if self._reconnect_in_progress:
-            return False
+            return
 
         now = time.ticks_ms()
         if self.is_connected():
             last_rx = self.get_last_rx_ms()
-            ping_ms = self.get_ping_interval_ms()
+            ping_ms = self.settings.PU_MQTT_PING_INTERVAL * 1000
+
             if last_rx is None or not ping_ms:
                 self._reconnect_attempt = 0
-                return True
-            stale_ms = int(ping_ms) * 4
+                return
+            
+            stale_ms = ping_ms * 2
             if time.ticks_diff(now, last_rx) <= stale_ms:
                 self._reconnect_attempt = 0
-                return True
+                return
+            
             self.mark_disconnected("stale rx > {} ms".format(stale_ms))
             self._next_reconnect_ms = 0
 
         if self._next_reconnect_ms and time.ticks_diff(now, self._next_reconnect_ms) < 0:
-            return False
+            return
 
         self._reconnect_in_progress = True
         try:
-            if self._wifi_manager and not self._wifi_manager.is_connected():
+            if self._wifi_manager:
                 await self._wifi_manager.ensure_connected()
+
             await self.connect()
+            
             self._reconnect_attempt = 0
             self._next_reconnect_ms = 0
             self._just_reconnected = True
+
             self.logger.warning("MQTT reconnected", file_only=True)
-            return True
         except Exception as e:
-            self._last_error = e
             self._reconnect_attempt += 1
+
             wait_ms = utils.backoff_interval_ms(
                 self._reconnect_attempt,
-                5000,
-                self.settings.PUC_MAX_RECONNECTION_INTERVAL,
+                500,
+                2000,
             )
+
+            if wait_ms >= 4000:
+                raise 
+            
             self._next_reconnect_ms = time.ticks_add(now, wait_ms)
             self.logger.warning(
                 "MQTT reconnect failed: {}, next try in {} ms".format(e, wait_ms),
                 file_only=True
             )
-            return False
         finally:
             self._reconnect_in_progress = False
 
     def _on_message(self, topic, msg, retained=False, properties=None):
-        if self._drop_input_refcount:
+        if self._drop_input_refcount or not self._input_handler:
             return
-        if self._input_handler is None:
-            return
+
         m = self._msg
         m.topic = utils.to_str(topic)
         m.payload = msg
@@ -165,6 +153,7 @@ class PepeunitMqttClient:
     async def connect(self):
         if self.is_connected():
             return
+
         self._client = MQTTClient(
             server=self.settings.PU_MQTT_HOST,
             port=self.settings.PU_MQTT_PORT,
@@ -180,8 +169,9 @@ class PepeunitMqttClient:
         self.logger.info("Connected to MQTT Broker")
 
     async def disconnect(self):
-        if self._client is None:
+        if not self._client:
             return
+
         try:
             await self._client.disconnect()
         finally:
@@ -189,7 +179,8 @@ class PepeunitMqttClient:
 
     async def subscribe_all_schema_topics(self):
         if not self.is_connected():
-            return False
+            return
+
         try:
             idx = 0
             for topic_list in self.schema_manager.input_base_topic.values():
@@ -204,22 +195,16 @@ class PepeunitMqttClient:
                     idx += 1
                     if (idx & 0x0F) == 0:
                         await utils.ayield(idx, every=16, do_gc=False)
+
             self.logger.info("Success subscribed to {} topics".format(idx))
-            return True
         except Exception as e:
-            self._last_error = e
             self.mark_disconnected("subscribe all failed: {}".format(e))
-            return False
 
     async def publish(self, topic, message, retain=False, qos=0):
         if not self.is_connected():
-            self._last_error = "publish while disconnected"
-            return False
+            return
+        
         try:
             await self._client.publish(utils.to_bytes(topic), utils.to_bytes(message), retain=retain, qos=qos)
-            return True
         except Exception as e:
-            self._last_error = e
             self.mark_disconnected("publish failed: {}".format(e))
-            return False
-
