@@ -10,12 +10,17 @@ from .logger import Logger
 
 
 class WifiManager:
+    DISCONNECTED = 0
+    CONNECTING = 1
+    CONNECTED = 2
+
     _PLATFORM = sys.platform
 
     def __init__(self, settings: Settings, logger: Logger):
         self.logger = logger
         self.settings = settings
         self._sta = None
+        self._state = self.DISCONNECTED
 
     @classmethod
     def _set_reconnects(cls, sta):
@@ -32,8 +37,17 @@ class WifiManager:
             self._sta = sta
         return self._sta
 
+    def get_state(self):
+        hw = bool(self.get_sta().isconnected())
+        if hw:
+            if self._state < self.CONNECTED:
+                self._state = self.CONNECTED
+        elif self._state >= self.CONNECTED:
+            self._state = self.DISCONNECTED
+        return self._state
+
     def is_connected(self):
-        return bool(self.get_sta().isconnected())
+        return self.get_state() >= self.CONNECTED
 
     def get_connected_ssid(self):
         sta = self.get_sta()
@@ -41,6 +55,7 @@ class WifiManager:
 
     async def _force_sta_reset(self):
         self.logger.info("WiFi station prepare", file_only=True)
+        self._state = self.DISCONNECTED
         sta = self.get_sta()
         sta.disconnect()
         sta.active(False)
@@ -67,6 +82,7 @@ class WifiManager:
         if sta.isconnected():
             connected_ssid = self.get_connected_ssid()
             if self.settings.PUC_WIFI_SSID and connected_ssid == self.settings.PUC_WIFI_SSID:
+                self._state = self.CONNECTED
                 return True
             self.logger.warning(
                 'WiFi connected to "{}" but target ssid is "{}" - forcing reconnect'.format(
@@ -79,14 +95,17 @@ class WifiManager:
         await self._force_sta_reset()
 
         self.logger.warning("Attempting connect to WiFi", file_only=True)
+        self._state = self.CONNECTING
         sta.connect(str(self.settings.PUC_WIFI_SSID), str(self.settings.PUC_WIFI_PASS))
 
         started = time.ticks_ms()
         while not sta.isconnected():
             if time.ticks_diff(time.ticks_ms(), started) >= int(timeout_ms):
+                self._state = self.DISCONNECTED
                 return False
             await asyncio.sleep_ms(200)
 
+        self._state = self.CONNECTED
         return True
 
     async def connect_forever(self, connect_timeout_ms=10000):
@@ -114,6 +133,7 @@ class WifiManager:
             )
 
             try:
+                self._state = self.CONNECTING
                 found = await self.scan_has_target_ssid()
                 if found:
                     ok = await self.connect_once(timeout_ms=connect_timeout_ms)
@@ -128,6 +148,7 @@ class WifiManager:
             except Exception as e:
                 self.logger.error("WiFi error: {}, next try in {} ms".format(str(e), wait_ms), file_only=True)
 
+            self._state = self.DISCONNECTED
             if wait_ms > 0:
                 await asyncio.sleep_ms(int(wait_ms))
             attempt += 1

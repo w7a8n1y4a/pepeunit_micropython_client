@@ -52,6 +52,10 @@ def vbi(buf: bytearray, offs: int, x: int):
 
 
 class MQTTClient:
+    DISCONNECTED = 0
+    CONNECTING = 1
+    CONNECTED = 2
+
     REPUB_COUNT = 0
     __slots__ = (
         "_addr",
@@ -62,14 +66,13 @@ class MQTTClient:
         "_connect_handler",
         "_has_connected",
         "_ibuf",
-        "_in_connect",
         "_keepalive",
         "_max_repubs",
         "_mvbuf",
         "_ping_interval",
         "_pswd",
         "_response_time",
-        "_isconnected",
+        "_state",
         "_sock",
         "_ssl",
         "_ssl_params",
@@ -118,8 +121,7 @@ class MQTTClient:
         self._clean = clean
         self._ping_interval = ping_interval * 1000
 
-        self._isconnected = False
-        self._in_connect = False
+        self._state = self.DISCONNECTED
         self._has_connected = False
         self._tasks = []
 
@@ -166,7 +168,7 @@ class MQTTClient:
         size = 0
         t = time.ticks_ms()
         while size < n:
-            if self._timeout(t) or not self.isconnected():
+            if self._timeout(t) or not self.is_connected():
                 raise OSError(-1, "Timeout on socket read")
             try:
                 msg_size = sock.readinto(buffer[size:], n - size)
@@ -192,7 +194,7 @@ class MQTTClient:
             bytes_wr = bytes_wr[:length]
         t = time.ticks_ms()
         while bytes_wr:
-            if self._timeout(t) or not self.isconnected():
+            if self._timeout(t) or not self.is_connected():
                 raise OSError(-1, "Timeout on socket write")
             try:
                 n = sock.write(bytes_wr)
@@ -291,6 +293,7 @@ class MQTTClient:
             except OSError:
                 pass
             self._close()
+        self._state = self.DISCONNECTED
         self._has_connected = False
 
     def _close(self):
@@ -300,7 +303,7 @@ class MQTTClient:
     async def _await_pid(self, pid):
         t = time.ticks_ms()
         while pid in self.rcv_pids:
-            if self._timeout(t) or not self.isconnected():
+            if self._timeout(t) or not self.is_connected():
                 break
             await asyncio.sleep_ms(100)
         else:
@@ -321,7 +324,7 @@ class MQTTClient:
             if await self._await_pid(pid):
                 return
 
-            if count >= self._max_repubs or not self.isconnected():
+            if count >= self._max_repubs or not self.is_connected():
                 raise OSError(-1)
             async with self.lock:
 
@@ -466,8 +469,8 @@ class MQTTClient:
     async def connect(self, *, quick=False):
         if not self._has_connected:
             self._addr = socket.getaddrinfo(self.server, self.port)[0][-1]
-        
-        self._in_connect = True
+
+        self._state = self.CONNECTING
         try:
             is_clean = self._clean
             if not self._has_connected and self._clean_init and not self._clean:
@@ -484,12 +487,11 @@ class MQTTClient:
             await self._connect(is_clean)
         except Exception:
             self._close()
-            self._in_connect = False
+            self._state = self.DISCONNECTED
             raise
         self.rcv_pids.clear()
 
-        self._isconnected = True
-        self._in_connect = False
+        self._state = self.CONNECTED
         if not self._has_connected:
             self._has_connected = True
 
@@ -500,7 +502,7 @@ class MQTTClient:
 
     async def _handle_msg(self):
         try:
-            while self.isconnected():
+            while self.is_connected():
                 async with self.lock:
                     await self.wait_msg()
                 await asyncio.sleep_ms(5)
@@ -510,7 +512,7 @@ class MQTTClient:
         self._reconnect()
 
     async def _keep_alive(self):
-        while self.isconnected():
+        while self.is_connected():
             pings_due = time.ticks_diff(time.ticks_ms(), self.last_rx) // self._ping_interval
             if pings_due >= 4:
                 break
@@ -529,19 +531,19 @@ class MQTTClient:
         if kill_skt:
             self._close()
 
-    def isconnected(self):
-        if self._in_connect:
-            return True
+    def get_state(self):
+        return self._state
 
-        return self._isconnected
+    def is_connected(self):
+        return self._state > self.DISCONNECTED
 
     def _reconnect(self):
-        if self._isconnected:
-            self._isconnected = False
+        if self._state != self.DISCONNECTED:
+            self._state = self.DISCONNECTED
             asyncio.create_task(self._kill_tasks(True))
 
     async def _connection(self):
-        if not self._isconnected:
+        if self._state != self.CONNECTED:
             raise OSError(-1, "Not connected")
 
     async def subscribe(self, topic, qos=0, properties=None):

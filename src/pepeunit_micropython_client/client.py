@@ -228,7 +228,6 @@ class PepeunitClient:
                 self._last_state_send = current_time
 
     async def run_main_cycle(self, cycle_ms=20):
-
         self._running = True
         try:
             while self._running:
@@ -236,12 +235,11 @@ class PepeunitClient:
                     await self.mqtt_client.ensure_connected()
                     if self.mqtt_client.consume_reconnected():
                         self._resubscribe_requested = True
-                if self._resubscribe_requested and not self._in_mqtt_callback:
-                    try:
-                        if self.mqtt_client.is_connected():
+                    if self._resubscribe_requested and self.mqtt_client.is_connected():
+                        try:
                             await self.mqtt_client.subscribe_all_schema_topics()
-                    finally:
-                        self._resubscribe_requested = False
+                        finally:
+                            self._resubscribe_requested = False
 
                 if self.mqtt_output_handler:
                     await utils.maybe_await(self.mqtt_output_handler(self))
