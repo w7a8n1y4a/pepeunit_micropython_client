@@ -231,6 +231,8 @@ async def request(
         status_line = await reader.readline(limit=256)
         status = _parse_status(status_line)
 
+        content_length = -1
+
         if collect_headers:
             resp_headers = {}
             while True:
@@ -241,9 +243,28 @@ async def request(
                 if i < 0:
                     continue
                 resp_headers[line[:i].strip().lower()] = line[i + 1 :].strip()
-        else:
+            cl_val = resp_headers.get(b"content-length")
+            if cl_val is not None:
+                try:
+                    content_length = int(cl_val)
+                except (ValueError, TypeError):
+                    pass
+        elif save_to:
             resp_headers = {}
             await reader.skip_headers()
+        else:
+            resp_headers = {}
+            while True:
+                line = await reader.readline(limit=header_limit)
+                if not line or line in (b"\r\n", b"\n"):
+                    break
+                if content_length < 0:
+                    i = line.find(b":")
+                    if i >= 0 and line[:i].strip().lower() == b"content-length":
+                        try:
+                            content_length = int(line[i + 1 :].strip())
+                        except (ValueError, TypeError):
+                            pass
 
         if save_to:
             with open(save_to, "wb") as f:
@@ -253,17 +274,31 @@ async def request(
                         break
                     f.write(chunk)
                     await utils.ayield(do_gc=False)
+            del reader
             gc.collect()
             return status, resp_headers, None
 
-        out = bytearray()
-        while len(out) < max_body:
-            chunk = await reader.readchunk(min(bufsize, max_body - len(out)))
-            if chunk == b"":
-                break
-            out.extend(chunk)
-            if (len(out) & 0x3FF) == 0:
-                await utils.ayield(len(out), every=1024, do_gc=False)
+        if 0 < content_length <= max_body:
+            out = bytearray(content_length)
+            pos = 0
+            while pos < content_length:
+                chunk = await reader.readchunk(min(bufsize, content_length - pos))
+                if chunk == b"":
+                    break
+                out[pos : pos + len(chunk)] = chunk
+                pos += len(chunk)
+            if pos < content_length:
+                out = out[:pos]
+        else:
+            out = bytearray()
+            while len(out) < max_body:
+                chunk = await reader.readchunk(min(bufsize, max_body - len(out)))
+                if chunk == b"":
+                    break
+                out.extend(chunk)
+                if (len(out) & 0x3FF) == 0:
+                    await utils.ayield(len(out), every=1024, do_gc=False)
+        del reader
         gc.collect()
         return status, resp_headers, out
     finally:

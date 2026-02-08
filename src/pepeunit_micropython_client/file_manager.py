@@ -39,7 +39,7 @@ class FileManager:
         await FileManager._ensure_dir(dirpath, yield_every=yield_every)
         with open(file_path, 'w') as f:
             json.dump(data, f)
-        await utils.ayield(0, every=1, do_gc=True)
+        await utils.ayield(do_gc=True)
 
     @staticmethod
     async def file_exists(file_path):
@@ -64,7 +64,7 @@ class FileManager:
         except Exception:
             pass
 
-        await utils.ayield(0, every=1, do_gc=False)
+        await utils.ayield(do_gc=False)
         await FileManager.trim_ndjson(file_path, max_lines, yield_every=yield_every)
 
     @staticmethod

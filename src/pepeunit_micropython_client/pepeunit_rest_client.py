@@ -55,15 +55,20 @@ class PepeunitRestClient:
     async def set_state_storage(self, state):
         url = self._build_url('/units/set_state_storage/' + self.settings.unit_uuid)
         payload = json.dumps({'state': state})
-        status, _, _ = await request("POST", url, headers=self._get_auth_headers(with_json=True), body=payload)
+        status, _, _ = await request(
+            "POST", url, headers=self._get_auth_headers(with_json=True), body=payload, collect_headers=False,
+        )
         self._raise_for_status(status)
         gc.collect()
 
     async def get_state_storage(self):
         url = self._build_url('/units/get_state_storage/' + self.settings.unit_uuid)
-        status, _, body = await request("GET", url, headers=self._get_auth_headers())
+        status, _, body = await request("GET", url, headers=self._get_auth_headers(), collect_headers=False)
         self._raise_for_status(status, body)
-        return utils.to_str(body)
+        result = utils.to_str(body)
+        del body
+        gc.collect()
+        return result
 
     async def get_input_by_output(self, topic, limit=10, offset=0):
         uuid = utils.extract_uuid_from_topic(topic, allow_no_slash=True)
@@ -75,6 +80,7 @@ class PepeunitRestClient:
         self._raise_for_status(status, body)
 
         data = json.loads(body)
+        del body
         gc.collect()
         return data
 
@@ -93,11 +99,13 @@ class PepeunitRestClient:
         for uuid in unit_node_uuids:
             parts.append('unit_node_uuids={}'.format(uuid))
         url = self._build_url('/units?' + '&'.join(parts))
+        del parts
 
         gc.collect()
         status, _, body = await request("GET", url, headers=self._get_auth_headers(), collect_headers=False)
         self._raise_for_status(status, body)
 
         data = json.loads(body)
+        del body
         gc.collect()
         return data

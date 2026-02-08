@@ -181,6 +181,7 @@ class PepeunitMqttClient:
                     for topic in topic_list:
                         await self._client.subscribe(utils.to_bytes(topic), qos=0)
                         idx += 1
+                        await utils.ayield(idx, every=4, do_gc=True)
             self.logger.info("Subscribed to {} topics".format(idx))
         except Exception as e:
             self.mark_disconnected("subscribe failed: {}".format(e))
