@@ -37,21 +37,14 @@ class WifiManager:
             self._sta = sta
         return self._sta
 
-    def get_state(self):
+    def is_connected(self):
         hw = bool(self.get_sta().isconnected())
         if hw:
             if self._state < self.CONNECTED:
                 self._state = self.CONNECTED
         elif self._state >= self.CONNECTED:
             self._state = self.DISCONNECTED
-        return self._state
-
-    def is_connected(self):
-        return self.get_state() >= self.CONNECTED
-
-    def get_connected_ssid(self):
-        sta = self.get_sta()
-        return utils.to_str(sta.config("essid"))
+        return self._state >= self.CONNECTED
 
     async def _force_sta_reset(self):
         self.logger.info("WiFi station prepare", file_only=True)
@@ -67,11 +60,8 @@ class WifiManager:
     async def scan_has_target_ssid(self):
         sta = self.get_sta()
         self.logger.info("WiFi run scan existing ssid`s", file_only=True)
-        scan = sta.scan()
-        for idx, ap in enumerate(scan, 1):
-            ap_ssid = ap[0]
-            ap_ssid = utils.to_str(ap_ssid)
-            if ap_ssid == self.settings.PUC_WIFI_SSID:
+        for idx, ap in enumerate(sta.scan(), 1):
+            if utils.to_str(ap[0]) == self.settings.PUC_WIFI_SSID:
                 return True
             await utils.ayield(idx, every=8, do_gc=False)
         return False
@@ -80,17 +70,15 @@ class WifiManager:
         sta = self.get_sta()
 
         if sta.isconnected():
-            connected_ssid = self.get_connected_ssid()
-            if self.settings.PUC_WIFI_SSID and connected_ssid == self.settings.PUC_WIFI_SSID:
+            if self.settings.PUC_WIFI_SSID and utils.to_str(sta.config("essid")) == self.settings.PUC_WIFI_SSID:
                 self._state = self.CONNECTED
                 return True
             self.logger.warning(
-                'WiFi connected to "{}" but target ssid is "{}" - forcing reconnect'.format(
-                    connected_ssid, self.settings.PUC_WIFI_SSID
+                'WiFi wrong SSID "{}"; need "{}"'.format(
+                    utils.to_str(sta.config("essid")), self.settings.PUC_WIFI_SSID
                 ),
                 file_only=True
             )
-            await self._force_sta_reset()
 
         await self._force_sta_reset()
 
@@ -112,41 +100,33 @@ class WifiManager:
         attempt = 0
         while True:
             if self.is_connected():
-                connected_ssid = self.get_connected_ssid()
-                if self.settings.PUC_WIFI_SSID and connected_ssid and connected_ssid != self.settings.PUC_WIFI_SSID:
-                    self.logger.warning(
-                        'WiFi unexpected cached connection to "{}"; need "{}" - disconnecting'.format(
-                            connected_ssid, self.settings.PUC_WIFI_SSID
-                        ),
-                        file_only=True
-                    )
-                    await self._force_sta_reset()
-                    attempt += 1
-                    continue
-                self.logger.warning("WiFi connected: " + str(self.get_sta().ifconfig()), file_only=True)
-                return True
+                ssid = utils.to_str(self.get_sta().config("essid"))
+                if not self.settings.PUC_WIFI_SSID or ssid == self.settings.PUC_WIFI_SSID:
+                    self.logger.warning("WiFi connected: " + str(self.get_sta().ifconfig()), file_only=True)
+                    return True
+                self.logger.warning(
+                    'WiFi wrong SSID "{}"; need "{}"'.format(ssid, self.settings.PUC_WIFI_SSID),
+                    file_only=True
+                )
+                await self._force_sta_reset()
+                attempt += 1
+                continue
 
-            wait_ms = utils.backoff_interval_ms(
-                attempt,
-                5000,
-                self.settings.PUC_MAX_RECONNECTION_INTERVAL,
-            )
+            wait_ms = utils.backoff_interval_ms(attempt, 5000, self.settings.PUC_MAX_RECONNECTION_INTERVAL)
 
             try:
                 self._state = self.CONNECTING
-                found = await self.scan_has_target_ssid()
-                if found:
-                    ok = await self.connect_once(timeout_ms=connect_timeout_ms)
-                    if ok:
+                if await self.scan_has_target_ssid():
+                    if await self.connect_once(timeout_ms=connect_timeout_ms):
                         continue
-                    self.logger.warning("WiFi connect timeout, next try in {} ms".format(wait_ms), file_only=True)
+                    self.logger.warning("WiFi timeout, retry in {} ms".format(wait_ms), file_only=True)
                 else:
                     self.logger.warning(
-                        'WiFi ssid "{}" not found, next scan in {} ms'.format(self.settings.PUC_WIFI_SSID, wait_ms),
+                        'SSID "{}" not found, retry in {} ms'.format(self.settings.PUC_WIFI_SSID, wait_ms),
                         file_only=True
                     )
             except Exception as e:
-                self.logger.error("WiFi error: {}, next try in {} ms".format(str(e), wait_ms), file_only=True)
+                self.logger.error("WiFi error: {}, retry in {} ms".format(e, wait_ms), file_only=True)
 
             self._state = self.DISCONNECTED
             if wait_ms > 0:

@@ -1,3 +1,6 @@
+_LOG_LEVEL_MAP = {'Debug': 0, 'Info': 1, 'Warning': 2, 'Error': 3, 'Critical': 4}
+
+
 class LogLevel:
     DEBUG = 'Debug'
     INFO = 'Info'
@@ -7,14 +10,7 @@ class LogLevel:
 
     @staticmethod
     def get_int_level(level_str):
-        mapping = {
-            LogLevel.DEBUG: 0,
-            LogLevel.INFO: 1,
-            LogLevel.WARNING: 2,
-            LogLevel.ERROR: 3,
-            LogLevel.CRITICAL: 4,
-        }
-        return mapping.get(level_str, 0)
+        return _LOG_LEVEL_MAP.get(level_str, 0)
 
 
 class SearchTopicType:
@@ -50,4 +46,3 @@ class BaseOutputTopicType:
 class RestartMode:
     RESTART_EXEC = 'restart_exec'
     NO_RESTART = 'no_restart'
-

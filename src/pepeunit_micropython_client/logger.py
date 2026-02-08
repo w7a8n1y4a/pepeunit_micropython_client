@@ -17,22 +17,15 @@ class Logger:
         self.time_manager = time_manager
         self.ff_console_log_enable = ff_console_log_enable
 
-    def _should_log(self, level_str):
-        if not self.settings:
-            return True
-        return LogLevel.get_int_level(level_str) >= LogLevel.get_int_level(self.settings.PU_MIN_LOG_LEVEL)
-
     def _log(self, level_str, message, file_only=False):
-        if not self._should_log(level_str):
+        if self.settings and LogLevel.get_int_level(level_str) < LogLevel.get_int_level(self.settings.PU_MIN_LOG_LEVEL):
             return
 
-        create_datetime = self.time_manager.get_epoch_ms()
-        free_mem = gc.mem_free()
         log_entry = '{"level":"%s","text":%s,"create_datetime":%d,"free_mem":%d}' % (
             level_str,
             json.dumps(message),
-            create_datetime,
-            free_mem,
+            self.time_manager.get_epoch_ms(),
+            gc.mem_free(),
         )
 
         if self.ff_console_log_enable:

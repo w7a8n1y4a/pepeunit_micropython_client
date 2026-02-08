@@ -13,10 +13,6 @@ from errno import EINPROGRESS, ETIMEDOUT
 gc.collect()
 from sys import platform
 
-IBUFSIZE = 50
-MSG_BYTES = True
-ESP8266 = platform == "esp8266"
-ESP32 = platform == "esp32"
 BUSY_ERRORS = [EINPROGRESS, ETIMEDOUT, 118, 119] if platform == "esp32" else [EINPROGRESS, ETIMEDOUT]
 
 
@@ -24,20 +20,11 @@ async def eliza(*_):
     await utils.ayield()
 
 
-def _noop(*_):
-    return None
-
-
 def pid_gen():
     pid = 0
     while True:
         pid = pid + 1 if pid < 65535 else 1
         yield pid
-
-
-def qos_check(qos):
-    if not (qos == 0 or qos == 1):
-        raise ValueError("Only qos 0 and 1 are supported.")
 
 
 def vbi(buf: bytearray, offs: int, x: int):
@@ -56,7 +43,6 @@ class MQTTClient:
     CONNECTING = 1
     CONNECTED = 2
 
-    REPUB_COUNT = 0
     __slots__ = (
         "_addr",
         "_cb",
@@ -84,7 +70,6 @@ class MQTTClient:
         "port",
         "rcv_pids",
         "server",
-        "topic_alias_maximum",
     )
 
     def __init__(
@@ -106,11 +91,6 @@ class MQTTClient:
         subs_cb=None,
         connect_coro=eliza,
     ):
-        if ssl_params is None:
-            ssl_params = {}
-        if subs_cb is None:
-            subs_cb = _noop
-
         self._client_id = client_id
         self._user = user
         self._pswd = password
@@ -125,19 +105,16 @@ class MQTTClient:
         self._has_connected = False
         self._tasks = []
 
-        if ESP8266:
+        if platform == "esp8266":
             import esp
             esp.sleep_type(0)
-        
-        self._ssl = ssl
-        self._ssl_params = ssl_params
 
-        self._cb = subs_cb
+        self._ssl = ssl
+        self._ssl_params = ssl_params or {}
+        self._cb = subs_cb or (lambda *_: None)
         self._connect_handler = connect_coro
 
-        self.port = port
-        if self.port == 0:
-            self.port = 8883 if self._ssl else 1883
+        self.port = port or (8883 if ssl else 1883)
         self.server = server
         self._sock = None
 
@@ -145,10 +122,8 @@ class MQTTClient:
         self.rcv_pids = set()
         self.last_rx = time.ticks_ms()
         self.lock = asyncio.Lock()
-        self._ibuf = bytearray(IBUFSIZE)
+        self._ibuf = bytearray(50)
         self._mvbuf = memoryview(self._ibuf)
-
-        self.topic_alias_maximum = 0
 
     def _timeout(self, t):
         return time.ticks_diff(time.ticks_ms(), t) > self._response_time
@@ -181,7 +156,7 @@ class MQTTClient:
             if msg_size is not None:
                 size += msg_size
                 t = time.ticks_ms()
-                self.last_rx = time.ticks_ms()
+                self.last_rx = t
             await utils.ayield(do_gc=False)
         return buffer[:n]
 
@@ -211,7 +186,6 @@ class MQTTClient:
         await self._as_write(struct.pack("!H", len(s)))
         await self._as_write(s)
 
-
     async def _recv_len(self):
         d = 0
         i = 0
@@ -236,8 +210,8 @@ class MQTTClient:
                 import ssl
             except ImportError:
                 import ussl as ssl
-
             self._sock = ssl.wrap_socket(self._sock, **self._ssl_params)
+
         premsg = bytearray(b"\x10\0\0\0\0\0")
         msg = bytearray(b"\x04MQTT\x00\0\0\0")
         msg[5] = 0x04
@@ -270,14 +244,10 @@ class MQTTClient:
             raise OSError(-1, "Invalid CONNACK packet")
 
         connack_resp = await self._as_read(2)
-
         if connack_resp[0] != 0:
             raise OSError(-1, "CONNACK flags not 0")
-
         if connack_resp[1] != 0:
             raise OSError(-1, "CONNACK reason code 0x%x" % connack_resp[1])
-
-        del connack_resp
 
     async def _ping(self):
         async with self.lock:
@@ -323,14 +293,11 @@ class MQTTClient:
         while 1:
             if await self._await_pid(pid):
                 return
-
             if count >= self._max_repubs or not self.is_connected():
                 raise OSError(-1)
             async with self.lock:
-
                 await self._publish(topic, msg, retain, qos, dup=1, pid=pid, properties=properties)
             count += 1
-            self.REPUB_COUNT += 1
 
     async def _publish(self, topic, msg, retain, qos, dup, pid, properties=None):
         pkt = bytearray(b"\x30\0\0\0")
@@ -347,12 +314,6 @@ class MQTTClient:
             await self._as_write(pkt, 2)
 
         await self._as_write(msg)
-
-    async def _subscribe_core(self, topic, qos, properties=None):
-        await self._usub(topic, qos, properties)
-
-    async def _unsubscribe_core(self, topic, properties=None):
-        await self._usub(topic, None, properties)
 
     async def _usub(self, topic, qos, _properties):
         sub = qos is not None
@@ -373,12 +334,6 @@ class MQTTClient:
 
         if not await self._await_pid(pid):
             raise OSError(-1)
-
-    def kill_pid(self, pid, msg):
-        if pid in self.rcv_pids:
-            self.rcv_pids.discard(pid)
-        else:
-            raise OSError(-1, f"Invalid pid in {msg} packet")
 
     async def wait_msg(self):
         try:
@@ -405,22 +360,9 @@ class MQTTClient:
                 raise OSError(-1, "Invalid PUBACK packet")
             rcv_pid = await self._as_read(2)
             pid = rcv_pid[0] << 8 | rcv_pid[1]
-
-            if sz != 2:
-                reason_code = await self._as_read(1)
-                reason_code = reason_code[0]
-                if reason_code >= 0x80:
-                    raise OSError(-1, "PUBACK reason code 0x%x" % reason_code)
-            if sz > 3:
-                puback_props_sz, _ = await self._recv_len()
-                if puback_props_sz > 0:
-                    puback_props = await self._as_read(puback_props_sz)
-
-            self.kill_pid(pid, "PUBACK")
+            self._kill_pid(pid, "PUBACK")
 
         if op == 0x90 or op == 0xB0:
-            un = "UN" if op == 0xB0 else ""
-            suback = op == 0x90
             sz, _ = await self._recv_len()
             rcv_pid = await self._as_read(2)
             pid = rcv_pid[0] << 8 | rcv_pid[1]
@@ -428,14 +370,11 @@ class MQTTClient:
 
             if sz > 1:
                 raise OSError(-1, "Got too many bytes")
-            if suback:
-                reason_code = await self._as_read(sz)
-                reason_code = reason_code[0]
-                
-                if reason_code >= 0x80:
-                    raise OSError(-1, f"{un}SUBACK reason code 0x{reason_code:x}")
-            
-            self.kill_pid(pid, f"{un}SUBACK")
+            if op == 0x90 and sz:
+                rc = (await self._as_read(sz))[0]
+                if rc >= 0x80:
+                    raise OSError(-1, "SUBACK reason 0x{:x}".format(rc))
+            self._kill_pid(pid, "UNSUBACK" if op == 0xB0 else "SUBACK")
 
         if op & 0xF0 != 0x30:
             return
@@ -453,9 +392,7 @@ class MQTTClient:
             sz -= 2
 
         msg = await self._as_read(sz, use_ibuf=sz <= len(self._ibuf))
-
-        if MSG_BYTES:
-            msg = bytes(msg)
+        msg = bytes(msg)
         retained = op & 0x01
         self._cb(topic, msg, bool(retained))
 
@@ -466,7 +403,7 @@ class MQTTClient:
         elif op & 6 == 4:
             raise OSError(-1, "QoS 2 not supported")
 
-    async def connect(self, *, quick=False):
+    async def connect(self):
         if not self._has_connected:
             self._addr = socket.getaddrinfo(self.server, self.port)[0][-1]
 
@@ -475,15 +412,12 @@ class MQTTClient:
             is_clean = self._clean
             if not self._has_connected and self._clean_init and not self._clean:
                 await self._connect(True)
-
                 try:
                     async with self.lock:
                         self._sock.write(b"\xe0\0")
                 except OSError:
                     pass
-
                 await asyncio.sleep(2)
-
             await self._connect(is_clean)
         except Exception:
             self._close()
@@ -492,11 +426,9 @@ class MQTTClient:
         self.rcv_pids.clear()
 
         self._state = self.CONNECTED
-        if not self._has_connected:
-            self._has_connected = True
+        self._has_connected = True
 
         asyncio.create_task(self._handle_msg())
-
         self._tasks.append(asyncio.create_task(self._keep_alive()))
         asyncio.create_task(self._connect_handler(self))
 
@@ -506,7 +438,6 @@ class MQTTClient:
                 async with self.lock:
                     await self.wait_msg()
                 await asyncio.sleep_ms(5)
-
         except OSError:
             pass
         self._reconnect()
@@ -531,9 +462,6 @@ class MQTTClient:
         if kill_skt:
             self._close()
 
-    def get_state(self):
-        return self._state
-
     def is_connected(self):
         return self._state > self.DISCONNECTED
 
@@ -542,20 +470,27 @@ class MQTTClient:
             self._state = self.DISCONNECTED
             asyncio.create_task(self._kill_tasks(True))
 
-    async def _connection(self):
-        if self._state != self.CONNECTED:
-            raise OSError(-1, "Not connected")
+    def _kill_pid(self, pid, msg):
+        if pid in self.rcv_pids:
+            self.rcv_pids.discard(pid)
+        else:
+            raise OSError(-1, "Invalid pid in {} packet".format(msg))
 
     async def subscribe(self, topic, qos=0, properties=None):
-        qos_check(qos)
-        await self._connection()
-        return await self._subscribe_core(topic, qos, properties)
+        if qos not in (0, 1):
+            raise ValueError("Only qos 0 and 1 are supported.")
+        if self._state != self.CONNECTED:
+            raise OSError(-1, "Not connected")
+        await self._usub(topic, qos, properties)
 
     async def unsubscribe(self, topic, properties=None):
-        await self._connection()
-        return await self._unsubscribe_core(topic, properties)
+        if self._state != self.CONNECTED:
+            raise OSError(-1, "Not connected")
+        await self._usub(topic, None, properties)
 
     async def publish(self, topic, msg, retain=False, qos=0, properties=None):
-        qos_check(qos)
-        await self._connection()
+        if qos not in (0, 1):
+            raise ValueError("Only qos 0 and 1 are supported.")
+        if self._state != self.CONNECTED:
+            raise OSError(-1, "Not connected")
         return await self._publish_core(topic, msg, retain, qos, properties)

@@ -73,7 +73,6 @@ class AesGcmCipher:
         y[13] = (c >> 16) & 0xFF
         y[14] = (c >> 8) & 0xFF
         y[15] = c & 0xFF
-        return None
 
     async def _ghash_update(self, y: int, h: int, data) -> int:
         mv = memoryview(data)

@@ -10,13 +10,13 @@ class FileManager:
     async def _ensure_dir(path, *, yield_every=32):
         if not path:
             return
-        parts = []
         if path.startswith('/'):
             base = '/'
             rest = path[1:]
         else:
             base = ''
             rest = path
+        parts = []
         idx = 0
         for p in rest.split('/'):
             idx += 1
@@ -35,10 +35,8 @@ class FileManager:
 
     @staticmethod
     async def write_json(file_path, data, *, yield_every=32):
-
         dirpath = utils.dirname(file_path)
         await FileManager._ensure_dir(dirpath, yield_every=yield_every)
-
         with open(file_path, 'w') as f:
             json.dump(data, f)
         await utils.ayield(0, every=1, do_gc=True)
@@ -53,26 +51,8 @@ class FileManager:
 
     @staticmethod
     async def append_ndjson_with_limit(file_path, item, max_lines, *, yield_every=32):
-
         dirpath = utils.dirname(file_path)
         await FileManager._ensure_dir(dirpath, yield_every=yield_every)
-        try:
-            with open(file_path, 'r') as f:
-                ch = ''
-                while True:
-                    c = f.read(1)
-                    if not c or not c.isspace():
-                        ch = c
-                        break
-            if ch == '[':
-
-                try:
-                    with open(file_path, 'w') as fw:
-                        pass
-                except Exception:
-                    pass
-        except Exception:
-            pass
 
         try:
             with open(file_path, 'a') as f:
@@ -89,7 +69,6 @@ class FileManager:
 
     @staticmethod
     async def iter_lines_bytes_cb(file_path, on_line, *, yield_every=32):
-
         try:
             with open(file_path, 'rb') as f:
                 idx = 0
@@ -102,16 +81,6 @@ class FileManager:
                     await utils.ayield(idx, every=yield_every, do_gc=False)
         except Exception:
             return
-
-    @staticmethod
-    async def _move(src, dst):
-        try:
-            shutil.move(src, dst)
-        except Exception:
-            try:
-                os.rename(src, dst)
-            except Exception:
-                pass
 
     @staticmethod
     async def trim_ndjson(file_path, max_lines, *, yield_every=32):
@@ -131,23 +100,26 @@ class FileManager:
                 return
             tmp_path = file_path + '.tmp'
             with open(tmp_path, 'w') as dst:
-                start = ti
                 idx = 0
                 while idx < max_lines:
-                    line = tail[(start + idx) % max_lines]
+                    line = tail[(ti + idx) % max_lines]
                     if line is not None:
                         dst.write(line)
                     idx += 1
                     await utils.ayield(idx, every=yield_every, do_gc=False)
-            await FileManager._move(tmp_path, file_path)
+            try:
+                shutil.move(tmp_path, file_path)
+            except Exception:
+                try:
+                    os.rename(tmp_path, file_path)
+                except Exception:
+                    pass
             gc.collect()
-            await utils.ayield(0, every=1, do_gc=False)
         except Exception:
             pass
 
     @staticmethod
     async def extract_tar_gz(tgz_path, dest_root, *, copy_chunk=256, yield_every=16):
-
         import tarfile
         import deflate
 
@@ -168,7 +140,6 @@ class FileManager:
                 try:
                     with open(out_path, 'wb') as outf:
                         shutil.copyfileobj(subf, outf, length=copy_chunk)
-                        outf.close()
                 finally:
                     try:
                         if subf:
@@ -179,5 +150,3 @@ class FileManager:
                 await utils.ayield(idx, every=yield_every, do_gc=True)
 
         gc.collect()
-        await utils.ayield(0, every=1, do_gc=False)
-

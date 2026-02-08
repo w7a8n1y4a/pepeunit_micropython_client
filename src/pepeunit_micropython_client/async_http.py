@@ -3,26 +3,20 @@ import utils
 
 import socket
 import gc
-
 import ssl
-
 import sys
+
 from errno import EINPROGRESS, ETIMEDOUT
 
-platform = sys.platform
-
-ESP32 = platform == "esp32"
-RP2 = platform == "rp2"
-if ESP32:
+if sys.platform == "esp32":
     BUSY_ERRORS = (EINPROGRESS, ETIMEDOUT, 118, 119)
-elif RP2:
+elif sys.platform == "rp2":
     BUSY_ERRORS = (EINPROGRESS, ETIMEDOUT, -110)
 else:
     BUSY_ERRORS = (EINPROGRESS, ETIMEDOUT)
 
 
 def _is_busy_error(e: OSError) -> bool:
-    # MicroPython uses numeric errno in e.args[0].
     return bool(e.args) and e.args[0] in BUSY_ERRORS
 
 
@@ -52,8 +46,6 @@ class _BufferedSock:
         self._readinto = sock.readinto
 
     def _compact(self):
-        if self.start == 0:
-            return
         if self.start >= self.end:
             self.start = 0
             self.end = 0
@@ -92,24 +84,18 @@ class _BufferedSock:
                 i = self.buf.find(b"\n", self.start, self.end)
                 if i != -1:
                     i += 1
-                    take = i - self.start
-                    if len(out) + take > limit:
-                        take = limit - len(out)
+                    take = min(i - self.start, limit - len(out))
                     out.extend(self.mv[self.start : self.start + take])
                     self.start += take
                     break
 
-                # No newline in current buffer: consume what we can.
-                take = self.end - self.start
-                if len(out) + take > limit:
-                    take = limit - len(out)
+                take = min(self.end - self.start, limit - len(out))
                 out.extend(self.mv[self.start : self.start + take])
                 self.start += take
                 if len(out) >= limit:
                     break
 
-            n = await self._fill()
-            if n == 0:
+            if await self._fill() == 0:
                 break
 
         return bytes(out)
@@ -123,17 +109,10 @@ class _BufferedSock:
                 mv = self.mv[self.start : self.start + avail]
                 self.start += avail
                 return mv
-            n = await self._fill()
-            if n == 0:
+            if await self._fill() == 0:
                 return b""
 
     async def skip_headers(self, limit=8192) -> bool:
-        """
-        Consume bytes until the end of HTTP headers (CRLF CRLF) is reached.
-
-        This avoids allocating per-header-line buffers. Returns True if the
-        delimiter was found, otherwise False (EOF or limit exceeded).
-        """
         pat = b"\r\n\r\n"
         consumed = 0
         while True:
@@ -142,7 +121,6 @@ class _BufferedSock:
                 self.start = i + 4
                 return True
 
-            # Not found: keep last 3 bytes for boundary overlap.
             avail = self.end - self.start
             if avail > 3:
                 step = avail - 3
@@ -151,8 +129,7 @@ class _BufferedSock:
                 if consumed >= limit:
                     return False
 
-            n = await self._fill()
-            if n == 0:
+            if await self._fill() == 0:
                 return False
 
 
@@ -175,7 +152,6 @@ async def _as_write(sock, data: bytes):
             await utils.ayield(off, every=1024, do_gc=False)
 
 def _parse_status(status_line: bytes) -> int:
-    # Expected: b"HTTP/1.1 200 OK\r\n"
     sp1 = status_line.find(b" ")
     if sp1 < 0:
         return 0
@@ -199,7 +175,6 @@ async def request(
     collect_headers=True,
     header_limit=2048,
 ):
-
     headers = headers or {}
     scheme, host, port, path = _parse_url(url)
     use_ssl = scheme == "https"
@@ -229,16 +204,11 @@ async def request(
 
         b = utils.to_bytes(body) if body is not None else b""
 
-        # Stream request to socket (no big request buffer).
-        method_b = utils.to_bytes(method)
-        path_b = utils.to_bytes(path)
-        host_b = utils.to_bytes(host)
-
-        await _as_write(s, method_b)
+        await _as_write(s, utils.to_bytes(method))
         await _as_write(s, b" ")
-        await _as_write(s, path_b)
+        await _as_write(s, utils.to_bytes(path))
         await _as_write(s, b" HTTP/1.1\r\nHost: ")
-        await _as_write(s, host_b)
+        await _as_write(s, utils.to_bytes(host))
         await _as_write(s, b"\r\nConnection: close\r\n")
 
         for k, v in headers.items():
@@ -261,8 +231,8 @@ async def request(
         status_line = await reader.readline(limit=256)
         status = _parse_status(status_line)
 
-        resp_headers = {}
         if collect_headers:
+            resp_headers = {}
             while True:
                 line = await reader.readline(limit=header_limit)
                 if not line or line in (b"\r\n", b"\n"):
@@ -270,13 +240,10 @@ async def request(
                 i = line.find(b":")
                 if i < 0:
                     continue
-                k = line[:i].strip().lower()
-                v = line[i + 1 :].strip()
-                resp_headers[k] = v
+                resp_headers[line[:i].strip().lower()] = line[i + 1 :].strip()
         else:
-            # Still must consume headers to align to body.
+            resp_headers = {}
             await reader.skip_headers()
-
 
         if save_to:
             with open(save_to, "wb") as f:
@@ -301,4 +268,3 @@ async def request(
         return status, resp_headers, out
     finally:
         s.close()
-

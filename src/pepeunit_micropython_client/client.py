@@ -32,7 +32,6 @@ class PepeunitClient:
     ):
         self.env_file_path = env_file_path
         self.schema_file_path = schema_file_path
-        self.log_file_path = log_file_path
         self.restart_mode = restart_mode
         self.ff_version_check_enable = ff_version_check_enable
         self.sta = sta
@@ -67,8 +66,7 @@ class PepeunitClient:
         self._last_state_send = 0
         self._in_mqtt_callback = False
         self._resubscribe_requested = False
-        self._last_mqtt_ping_ms = time.ticks_ms()
-    
+
     def get_system_state(self):
         state = {
             'millis': self.time_manager.get_epoch_ms(),
@@ -103,7 +101,7 @@ class PepeunitClient:
         try:
             for topic_key in self.schema.input_base_topic:
                 if msg.topic in self.schema.input_base_topic[topic_key]:
-                    self.logger.info(f'Get base MQTT command: {topic_key}')
+                    self.logger.info('Get base MQTT command: {}'.format(topic_key))
 
                     if topic_key == BaseInputTopicType.ENV_UPDATE_PEPEUNIT:
                         asyncio.create_task(self.download_env(self.env_file_path))
@@ -128,11 +126,11 @@ class PepeunitClient:
         self._resubscribe_requested = True
         self.logger.info('Success update schema')
 
-    def set_state_storage(self, state):
-        self.rest_client.set_state_storage(state)
+    async def set_state_storage(self, state):
+        await self.rest_client.set_state_storage(state)
 
-    def get_state_storage(self):
-        return self.rest_client.get_state_storage()
+    async def get_state_storage(self):
+        return await self.rest_client.get_state_storage()
 
     def _handle_update(self, msg):
         payload = json.loads(msg.payload) if msg.payload else {}
@@ -174,7 +172,9 @@ class PepeunitClient:
             self.logger.warning("Failed to remove update archive: {}".format(e), file_only=True)
 
     def _handle_log_sync(self):
-        async def _trim_and_send(topic):
+        topic = self.schema.output_base_topic[BaseOutputTopicType.LOG_PEPEUNIT][0]
+
+        async def _trim_and_send():
             try:
                 await FileManager.trim_ndjson(self.logger.log_file_path, self.settings.PU_MAX_LOG_LENGTH)
             except Exception as e:
@@ -188,26 +188,14 @@ class PepeunitClient:
 
             await FileManager.iter_lines_bytes_cb(self.logger.log_file_path, on_line, yield_every=32)
 
-        topic = self.schema.output_base_topic[BaseOutputTopicType.LOG_PEPEUNIT][0]
-
-        asyncio.create_task(_trim_and_send(topic))
+        asyncio.create_task(_trim_and_send())
         self.logger.info('Scheduled log sync to MQTT')
 
-
-    def _subscribe_all_schema_topics_now(self):
-        self.mqtt_client.subscribe_all_schema_topics()
-
     def subscribe_all_schema_topics(self):
-        if self._in_mqtt_callback:
-            self._resubscribe_requested = True
-            return
-        self._subscribe_all_schema_topics_now()
+        self._resubscribe_requested = True
 
     async def publish_to_topics(self, topic_key, message):
-
-        topics = self.schema.output_topic.get(topic_key, None)
-        if topics is None:
-            topics = self.schema.output_base_topic.get(topic_key, None)
+        topics = self.schema.output_topic.get(topic_key) or self.schema.output_base_topic.get(topic_key)
         if not topics:
             self.logger.warning("No MQTT topics for key: {}".format(topic_key), file_only=True)
             return
@@ -216,16 +204,15 @@ class PepeunitClient:
 
     def _base_mqtt_output_handler(self):
         current_time = self.time_manager.get_epoch_ms()
-        if self.mqtt_client and BaseOutputTopicType.STATE_PEPEUNIT in self.schema.output_base_topic:
-            if (current_time - self._last_state_send) / 1000 >= self.settings.PU_STATE_SEND_INTERVAL:
-                topic = self.schema.output_base_topic[BaseOutputTopicType.STATE_PEPEUNIT][0]
-                state_payload = self.get_system_state()
-
-                if utils.should_collect_memory(6000):
-                    self._last_state_send = current_time
-                    return
-                asyncio.create_task(self.mqtt_client.publish(topic, json.dumps(state_payload)))
-                self._last_state_send = current_time
+        if BaseOutputTopicType.STATE_PEPEUNIT not in self.schema.output_base_topic:
+            return
+        if (current_time - self._last_state_send) / 1000 < self.settings.PU_STATE_SEND_INTERVAL:
+            return
+        self._last_state_send = current_time
+        if utils.should_collect_memory(6000):
+            return
+        topic = self.schema.output_base_topic[BaseOutputTopicType.STATE_PEPEUNIT][0]
+        asyncio.create_task(self.mqtt_client.publish(topic, json.dumps(self.get_system_state())))
 
     async def run_main_cycle(self, cycle_ms=20):
         self._running = True
@@ -257,11 +244,10 @@ class PepeunitClient:
         self.custom_update_handler = custom_update_handler
 
     def stop_main_cycle(self):
-        self.logger.info(f'Main cycle stopped', file_only=True)
+        self.logger.info('Main cycle stopped', file_only=True)
         self._running = False
 
     def restart_device(self):
         self.logger.warning("Restart: I`ll be back", file_only=True)
         time.sleep(1)
         machine.reset()
-

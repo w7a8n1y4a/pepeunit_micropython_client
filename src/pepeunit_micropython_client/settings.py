@@ -1,8 +1,5 @@
 import ujson as json
-
 import utils
-
-import os
 
 
 class Settings:
@@ -45,30 +42,26 @@ class Settings:
         dot2 = token.find(".", dot1 + 1)
         if dot2 < 0:
             return None
-
-        payload = token[dot1 + 1 : dot2].encode()
-        if b"-" in payload or b"_" in payload:
-            payload = payload.replace(b"-", b"+").replace(b"_", b"/")
-        pad = (-len(payload)) & 3
-        if pad:
-            payload = payload + (b"=" * pad)
-
         try:
-            decoded = utils.b64decode_to_bytes(payload)
-            uuid = json.loads(decoded.decode("utf-8"))["uuid"]
+            seg = token[dot1 + 1:dot2]
+            if '-' in seg or '_' in seg:
+                seg = seg.replace("-", "+").replace("_", "/")
+            raw = utils.b64decode_to_bytes(seg)
+            i = raw.find(b'"uuid":"')
+            if i < 0:
+                return None
+            i += 8
+            j = raw.find(b'"', i)
+            self._unit_uuid = raw[i:j].decode("utf-8") if j > i else None
         except Exception:
             return None
-
-        self._unit_uuid = uuid
-        return uuid
+        return self._unit_uuid
 
     def load_from_file(self):
         if not self.env_file_path:
             return
-
         with open(self.env_file_path, "r") as f:
             data = json.load(f)
-
         for k, v in data.items():
             setattr(self, k, v)
         self._unit_uuid = None
