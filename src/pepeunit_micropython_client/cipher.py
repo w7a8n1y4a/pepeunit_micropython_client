@@ -1,4 +1,5 @@
 import os
+import gc
 
 import utils
 
@@ -6,6 +7,13 @@ import ucryptolib as _cryptolib
 
 
 class AesGcmCipher:
+    __slots__ = ("_gf_v", "_gf_z", "_y")
+
+    def __init__(self):
+        self._gf_v = bytearray(16)
+        self._gf_z = bytearray(16)
+        self._y = bytearray(16)
+
     def _get_key(self, key_b64: str) -> bytes:
         key = utils.b64decode_to_bytes(key_b64)
         if len(key) not in (16, 24, 32):
@@ -15,10 +23,16 @@ class AesGcmCipher:
     async def aes_gcm_encode(self, data: str, key: str) -> str:
         plaintext = data.encode("utf-8")
         nonce = os.urandom(12)
-
         key = self._get_key(key)
         ciphertext, tag = await self._aes_gcm_encrypt(plaintext, nonce, key)
-        out = utils.b64encode(nonce) + "." + utils.b64encode(ciphertext + tag)
+        del plaintext
+        ct_tag = bytearray(len(ciphertext) + 16)
+        ct_tag[:len(ciphertext)] = ciphertext
+        ct_tag[len(ciphertext):] = tag
+        del ciphertext, tag
+        out = utils.b64encode(nonce) + "." + utils.b64encode(ct_tag)
+        del ct_tag
+        gc.collect()
         return out
 
     async def aes_gcm_decode(self, data: str, key: str) -> str:
@@ -27,6 +41,7 @@ class AesGcmCipher:
             raise ValueError("Invalid ciphertext format")
         nonce = utils.b64decode_to_bytes(parts[0])
         ct_and_tag = utils.b64decode_to_bytes(parts[1])
+        del parts
         if len(nonce) != 12:
             raise ValueError("Nonce must be 12 bytes")
         if len(ct_and_tag) < 16:
@@ -36,23 +51,12 @@ class AesGcmCipher:
         tag = ct_and_tag[-16:]
         key = self._get_key(key)
         plaintext = await self._aes_gcm_decrypt(ciphertext, tag, nonce, key)
+        del nonce, ct_and_tag, ciphertext, tag
+        gc.collect()
         return plaintext.decode("utf-8")
 
     @staticmethod
-    def _to_bytes(value: int, length: int) -> bytes:
-        return value.to_bytes(length, "big")
-
-    @staticmethod
-    def _from_bytes(b: bytes) -> int:
-        return int.from_bytes(b, "big")
-
-    def _aes_ecb_encrypt_block(self, block16, cipher) -> bytes:
-        if len(block16) != 16:
-            raise ValueError("ECB block must be 16 bytes")
-        return cipher.encrypt(block16)
-
-    @staticmethod
-    def _xor_bytes(a: bytes, b: bytes) -> bytes:
+    def _xor_bytes(a, b) -> bytes:
         n = len(a)
         out = bytearray(n)
         for i in range(n):
@@ -74,57 +78,81 @@ class AesGcmCipher:
         y[14] = (c >> 8) & 0xFF
         y[15] = c & 0xFF
 
-    async def _ghash_update(self, y: int, h: int, data) -> int:
+    async def _gf_mul(self, x, y):
+        """GF(2^128) multiply using pre-allocated byte arrays.
+        Result in self._gf_z; caller must use/copy before next call.
+        """
+        z = self._gf_z
+        v = self._gf_v
+
+        for j in range(16):
+            z[j] = 0
+            v[j] = x[j]
+
+        for i in range(128):
+            if (y[i >> 3] >> (7 - (i & 7))) & 1:
+                for j in range(16):
+                    z[j] ^= v[j]
+
+            lsb = v[15] & 1
+
+            for j in range(15, 0, -1):
+                v[j] = (v[j] >> 1) | ((v[j - 1] & 1) << 7)
+            v[0] >>= 1
+
+            if lsb:
+                v[0] ^= 0xE1
+
+            if (i & 31) == 31:
+                await utils.ayield(do_gc=False)
+
+        return z
+
+    async def _ghash_update(self, y, h, data):
+        """XOR and GF-multiply data blocks into y (bytearray 16) in place."""
         mv = memoryview(data)
         n = len(mv)
         full = n & ~0xF
+
         if full:
             for i in range(0, full, 16):
-                y ^= self._from_bytes(mv[i : i + 16])
-                y = await self._gf_mul(y, h)
-                await utils.ayield((i // 16) + 1, every=32, do_gc=False)
+                for j in range(16):
+                    y[j] ^= mv[i + j]
+                y[:] = await self._gf_mul(y, h)
+                await utils.ayield((i >> 4) + 1, every=32, do_gc=False)
+
         if n != full:
-            tail = bytearray(16)
-            tail[: n - full] = mv[full:]
-            y ^= self._from_bytes(tail)
-            y = await self._gf_mul(y, h)
-        return y
+            for j in range(n - full):
+                y[j] ^= mv[full + j]
+            y[:] = await self._gf_mul(y, h)
 
-    @staticmethod
-    async def _gf_mul(x: int, y: int) -> int:
-        R = 0xE1000000000000000000000000000000
-        z = 0
-        v = x
-        for i in range(128):
-            if (y >> (127 - i)) & 1:
-                z ^= v
-            if v & 1:
-                v = (v >> 1) ^ R
-            else:
-                v >>= 1
-            await utils.ayield(i + 1, every=32, do_gc=False)
-        return z
+    async def _ghash(self, H, aad, ciphertext):
+        """GHASH; result in self._gf_z (valid until next _gf_mul)."""
+        y = self._y
+        for j in range(16):
+            y[j] = 0
 
-    async def _ghash(self, H: bytes, associated_data: bytes, ciphertext) -> bytes:
-        h = self._from_bytes(H)
-        y = 0
-
-        if associated_data:
-            y = await self._ghash_update(y, h, associated_data)
+        if aad:
+            await self._ghash_update(y, H, aad)
 
         if ciphertext:
-            y = await self._ghash_update(y, h, ciphertext)
+            await self._ghash_update(y, H, ciphertext)
 
-        aad_bits = (len(associated_data) if associated_data else 0) * 8
-        c_bits = len(ciphertext) * 8
-        len_block = self._to_bytes(aad_bits, 8) + self._to_bytes(c_bits, 8)
-        y ^= self._from_bytes(len_block)
-        y = await self._gf_mul(y, h)
-        return self._to_bytes(y, 16)
+        bits = (len(aad) if aad else 0) << 3
+        for j in range(7, -1, -1):
+            y[j] ^= bits & 0xFF
+            bits >>= 8
+
+        bits = len(ciphertext) << 3
+        for j in range(15, 7, -1):
+            y[j] ^= bits & 0xFF
+            bits >>= 8
+
+        return await self._gf_mul(y, H)
 
     async def _aes_gcm_encrypt(self, plaintext: bytes, nonce: bytes, key: bytes) -> tuple:
         ecb = _cryptolib.aes(key, 1)
-        H = self._aes_ecb_encrypt_block(b"\x00" * 16, ecb)
+        H = ecb.encrypt(b"\x00" * 16)
 
         if len(nonce) != 12:
             raise ValueError("Nonce must be 12 bytes")
@@ -136,17 +164,15 @@ class AesGcmCipher:
         plaintext_mv = memoryview(plaintext)
         i = 0
         while i < len(plaintext):
-            s_i = self._aes_ecb_encrypt_block(counter, ecb)
-            block_len = 16
-            if i + 16 > len(plaintext):
-                block_len = len(plaintext) - i
+            s_i = ecb.encrypt(counter)
+            block_len = min(16, len(plaintext) - i)
             self._xor_into(ciphertext, i, plaintext_mv[i : i + block_len], s_i, block_len)
             i += block_len
             self._inc32(counter)
-            await utils.ayield(i // 16, every=32, do_gc=False)
+            await utils.ayield(i >> 4, every=32, do_gc=False)
 
         S = await self._ghash(H, b"", ciphertext)
-        tag = self._xor_bytes(self._aes_ecb_encrypt_block(J0, ecb), S)
+        tag = self._xor_bytes(ecb.encrypt(J0), S)
         return bytes(ciphertext), tag
 
     async def _aes_gcm_decrypt(self, ciphertext: bytes, tag: bytes, nonce: bytes, key: bytes) -> bytes:
@@ -156,11 +182,11 @@ class AesGcmCipher:
             raise ValueError("Nonce must be 12 bytes")
 
         ecb = _cryptolib.aes(key, 1)
-        H = self._aes_ecb_encrypt_block(b"\x00" * 16, ecb)
+        H = ecb.encrypt(b"\x00" * 16)
         J0 = nonce + b"\x00\x00\x00\x01"
 
         S = await self._ghash(H, b"", ciphertext)
-        expected_tag = self._xor_bytes(self._aes_ecb_encrypt_block(J0, ecb), S)
+        expected_tag = self._xor_bytes(ecb.encrypt(J0), S)
 
         mismatch = 0
         for a, b in zip(tag, expected_tag):
@@ -174,13 +200,11 @@ class AesGcmCipher:
         ciphertext_mv = memoryview(ciphertext)
         i = 0
         while i < len(ciphertext):
-            s_i = self._aes_ecb_encrypt_block(counter, ecb)
-            block_len = 16
-            if i + 16 > len(ciphertext):
-                block_len = len(ciphertext) - i
+            s_i = ecb.encrypt(counter)
+            block_len = min(16, len(ciphertext) - i)
             self._xor_into(plaintext, i, ciphertext_mv[i : i + block_len], s_i, block_len)
             i += block_len
             self._inc32(counter)
-            await utils.ayield(i // 16, every=32, do_gc=False)
+            await utils.ayield(i >> 4, every=32, do_gc=False)
 
         return bytes(plaintext)
