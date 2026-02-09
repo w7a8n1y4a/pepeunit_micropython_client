@@ -30,11 +30,11 @@ async def output_handler(client: PepeunitClient):
     global last_output_send_time
     current_time = client.time_manager.get_epoch_ms()
     
-    if (current_time - last_output_send_time) / 1000 >= client.settings.DELAY_PUB_MSG:
+    if (current_time - last_output_send_time) // 1000 >= client.settings.DELAY_PUB_MSG:
         gc.collect()
         message = str(time.ticks_ms())
         
-        client.logger.debug(f"Send to output/pepeunit: {message}", file_only=True)
+        client.logger.debug("Send to output/pepeunit: {}".format(message), file_only=True)
         
         await client.publish_to_topics("output/pepeunit", message)
         
@@ -55,25 +55,25 @@ async def input_handler(client: PepeunitClient, msg):
                 try:
                     value = int(value)
                     print('time', time.ticks_ms(), 'free mem:', gc.mem_free())
-                    client.logger.debug(f"Get from input/pepeunit: {value}", file_only=True)
+                    client.logger.debug("Get from input/pepeunit: {}".format(value), file_only=True)
 
                 except ValueError:
-                    client.logger.error(f"Value is not a number: {value}")
+                    client.logger.error("Value is not a number: {}".format(value))
 
     except Exception as e:
-        client.logger.error(f"Input handler error: {e}")
+        client.logger.error("Input handler error: {}".format(e))
 
 
 async def test_set_get_storage(client: PepeunitClient):
 
     try:
         await client.rest_client.set_state_storage('This line is saved in Pepeunit Instance')
-        client.logger.info(f"Success set state")
+        client.logger.info("Success set state")
         
         state = await client.rest_client.get_state_storage()
-        client.logger.info(f"Success get state: {state}")
+        client.logger.info("Success get state: {}".format(state))
     except Exception as e:
-        client.logger.error(f"Test set get storage failed: {e}")
+        client.logger.error("Test set get storage failed: {}".format(e))
 
 
 async def test_get_units(client: PepeunitClient):
@@ -114,9 +114,9 @@ async def test_cipher(client: PepeunitClient):
         aes_cipher = AesGcmCipher()
         text = "pepeunit cipher test"
         enc = await aes_cipher.aes_gcm_encode(text, client.settings.PU_ENCRYPT_KEY)
-        client.logger.info(f"Cipher data {enc}")
+        client.logger.info("Cipher data {}".format(enc))
         dec = await aes_cipher.aes_gcm_decode(enc, client.settings.PU_ENCRYPT_KEY)
-        client.logger.info(f"Decoded data: {dec}")
+        client.logger.info("Decoded data: {}".format(dec))
     except Exception as e:
         client.logger.error("Cipher test error: {}".format(e))
 
@@ -142,5 +142,5 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         raise
     except Exception as e:
-        client.logger.critical(f"Error with reset: {str(e)}", file_only=True)
+        client.logger.critical("Error with reset: {}".format(e), file_only=True)
         client.restart_device()

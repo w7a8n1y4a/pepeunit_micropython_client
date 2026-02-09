@@ -111,12 +111,12 @@ class PepeunitMqttClient:
         except Exception as e:
             self._reconnect_attempt += 1
             wait_ms = utils.backoff_interval_ms(self._reconnect_attempt, 500, 2000)
-            if wait_ms >= 2000:
-                raise e
-            self._next_reconnect_ms = time.ticks_add(now, wait_ms)
+            self._next_reconnect_ms = time.ticks_add(time.ticks_ms(), wait_ms)
             self.logger.warning(
                 "MQTT reconnect failed: {}, next in {} ms".format(e, wait_ms), file_only=True
             )
+            if wait_ms >= 2000:
+                raise e
         finally:
             if self._state == self.RECONNECTING:
                 self._state = self.DISCONNECTED

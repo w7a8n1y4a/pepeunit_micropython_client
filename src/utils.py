@@ -26,10 +26,8 @@ def to_str(value):
 def backoff_interval_ms(attempt, base_ms, max_ms):
     if attempt <= 0:
         return 0
-    interval = base_ms * (2 ** (attempt - 1))
-    if interval > max_ms:
-        return max_ms
-    return int(interval)
+    interval = base_ms << (attempt - 1)
+    return min(interval, max_ms)
 
 
 def extract_uuid_from_topic(topic_url, *, allow_no_slash=False):

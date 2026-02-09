@@ -206,7 +206,7 @@ class PepeunitClient:
         current_time = self.time_manager.get_epoch_ms()
         if BaseOutputTopicType.STATE_PEPEUNIT not in self.schema.output_base_topic:
             return
-        if (current_time - self._last_state_send) / 1000 < self.settings.PU_STATE_SEND_INTERVAL:
+        if (current_time - self._last_state_send) // 1000 < self.settings.PU_STATE_SEND_INTERVAL:
             return
         self._last_state_send = current_time
         if utils.should_collect_memory(6000):
