@@ -142,5 +142,8 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         raise
     except Exception as e:
-        client.logger.critical("Error with reset: {}".format(e), file_only=True)
+        try:
+            client.logger.critical("Error with reset: {}".format(e), file_only=True)
+        except Exception:
+            print("Error critical log")
         client.restart_device()
