@@ -64,7 +64,6 @@ class PepeunitClient:
 
         self._running = False
         self._last_state_send = 0
-        self._in_mqtt_callback = False
         self._resubscribe_requested = False
 
     def get_system_state(self):
@@ -86,15 +85,15 @@ class PepeunitClient:
 
     def set_mqtt_input_handler(self, handler):
         self.mqtt_input_handler = handler
-        def combined_handler(msg):
-            self._in_mqtt_callback = True
+        async def combined_handler(msg):
             try:
                 self._base_mqtt_input_func(msg)
                 if self.mqtt_input_handler:
-                    utils.spawn(self.mqtt_input_handler(self, msg))
+                    await self.mqtt_input_handler(self, msg)
+            except Exception as e:
+                self.logger.error('Error in MQTT handler: ' + str(e))
             finally:
                 self._last_state_send = time.ticks_ms()
-                self._in_mqtt_callback = False
         self.mqtt_client.set_input_handler(combined_handler)
 
     def _base_mqtt_input_func(self, msg):
@@ -218,15 +217,14 @@ class PepeunitClient:
         self._running = True
         try:
             while self._running:
-                if not self._in_mqtt_callback:
-                    await self.mqtt_client.ensure_connected()
-                    if self.mqtt_client.consume_reconnected():
-                        self._resubscribe_requested = True
-                    if self._resubscribe_requested and self.mqtt_client.is_connected():
-                        try:
-                            await self.mqtt_client.subscribe_all_schema_topics()
-                        finally:
-                            self._resubscribe_requested = False
+                await self.mqtt_client.ensure_connected()
+                if self.mqtt_client.consume_reconnected():
+                    self._resubscribe_requested = True
+                if self._resubscribe_requested and self.mqtt_client.is_connected():
+                    try:
+                        await self.mqtt_client.subscribe_all_schema_topics()
+                    finally:
+                        self._resubscribe_requested = False
 
                 if self.mqtt_output_handler:
                     await utils.maybe_await(self.mqtt_output_handler(self))

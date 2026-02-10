@@ -42,7 +42,6 @@ class PepeunitMqttClient:
 
         self._input_handler = None
         self._drop_input_refcount = 0
-        self._msg = _Msg()
 
         self._client = None
         self._wifi_manager = None
@@ -132,15 +131,12 @@ class PepeunitMqttClient:
     def _on_message(self, topic, msg, retained=False, properties=None):
         if self._drop_input_refcount or not self._input_handler:
             return
-        m = self._msg
+        m = _Msg()
         m.topic = utils.to_str(topic)
         m.payload = msg
         m.retained = retained
         m.properties = properties
-        try:
-            self._input_handler(m)
-        except Exception as e:
-            self.logger.error("MQTT input error: {}".format(e), file_only=True)
+        utils.spawn(self._input_handler(m))
 
     def set_input_handler(self, handler):
         self._input_handler = handler
