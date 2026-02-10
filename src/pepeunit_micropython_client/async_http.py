@@ -181,6 +181,7 @@ async def request(
 
     for attempt in range(4):
         try:
+            await asyncio.sleep_ms(0)
             addr = socket.getaddrinfo(host, port)[0][-1]
             break
         except OSError as e:
@@ -201,6 +202,7 @@ async def request(
         await utils.ayield(do_gc=False)
         if use_ssl:
             s = ssl.wrap_socket(s, server_hostname=host)
+            await utils.ayield(do_gc=False)
 
         b = utils.to_bytes(body) if body is not None else b""
 

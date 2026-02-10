@@ -1,8 +1,6 @@
 import ujson as json
 import os
 import gc
-from shutil import shutil as shutil
-
 import utils
 
 class FileManager:
@@ -31,7 +29,9 @@ class FileManager:
     @staticmethod
     async def read_json(file_path):
         with open(file_path, 'r') as f:
-            return json.load(f)
+            data = json.load(f)
+        await utils.ayield(do_gc=False)
+        return data
 
     @staticmethod
     async def write_json(file_path, data, *, yield_every=32):
@@ -45,9 +45,11 @@ class FileManager:
     async def file_exists(file_path):
         try:
             os.stat(file_path)
-            return True
+            exists = True
         except OSError:
-            return False
+            exists = False
+        await utils.ayield(do_gc=False)
+        return exists
 
     @staticmethod
     async def append_ndjson_with_limit(file_path, item, max_lines, *, yield_every=32):
@@ -108,12 +110,9 @@ class FileManager:
                     idx += 1
                     await utils.ayield(idx, every=yield_every, do_gc=False)
             try:
-                shutil.move(tmp_path, file_path)
+                os.rename(tmp_path, file_path)
             except Exception:
-                try:
-                    os.rename(tmp_path, file_path)
-                except Exception:
-                    pass
+                pass
             gc.collect()
         except Exception:
             pass
@@ -139,7 +138,14 @@ class FileManager:
 
                 try:
                     with open(out_path, 'wb') as outf:
-                        shutil.copyfileobj(subf, outf, length=copy_chunk)
+                        chunk_idx = 0
+                        while True:
+                            chunk = subf.read(copy_chunk)
+                            if not chunk:
+                                break
+                            outf.write(chunk)
+                            chunk_idx += 1
+                            await utils.ayield(chunk_idx, every=yield_every, do_gc=False)
                 finally:
                     try:
                         if subf:

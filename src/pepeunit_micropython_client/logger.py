@@ -55,6 +55,7 @@ class Logger:
     def critical(self, message, file_only=False):
         self._log(LogLevel.CRITICAL, message, file_only)
 
-    def reset_log(self):
+    async def reset_log(self):
         with open(self.log_file_path, 'w') as f:
             pass
+        await utils.ayield(do_gc=False)
