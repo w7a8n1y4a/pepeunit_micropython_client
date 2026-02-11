@@ -246,6 +246,10 @@ class PepeunitClient:
         self._running = False
 
     def restart_device(self):
-        self.logger.warning("Restart: I`ll be back", file_only=True)
+        try:
+            gc.collect()
+            self.logger.warning("Restart: I`ll be back", file_only=True)
+        except Exception:
+            pass
         time.sleep(1)
         machine.reset()
