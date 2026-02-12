@@ -29,6 +29,8 @@ class PepeunitClient:
         ff_version_check_enable=True,
         ff_wifi_manager_enable=False,
         ff_console_log_enable=True,
+        ff_mqtt_log_enable=True,
+        ff_file_log_enable=True,
     ):
         self.env_file_path = env_file_path
         self.schema_file_path = schema_file_path
@@ -45,7 +47,9 @@ class PepeunitClient:
                 self.schema,
                 self.settings,
                 self.time_manager,
-                ff_console_log_enable
+                ff_console_log_enable,
+                ff_mqtt_log_enable,
+                ff_file_log_enable,
             )
         self.mqtt_client = PepeunitMqttClient(self.settings, self.schema, self.logger)
         self.logger.mqtt_client = self.mqtt_client
@@ -171,6 +175,8 @@ class PepeunitClient:
             self.logger.warning("Failed to remove update archive: {}".format(e), file_only=True)
 
     def _handle_log_sync(self):
+        if not self.logger.ff_file_log_enable:
+            return
         topic = self.schema.output_base_topic[BaseOutputTopicType.LOG_PEPEUNIT][0]
 
         async def _trim_and_send():
