@@ -42,6 +42,8 @@ class PepeunitMqttClient:
 
         self._input_handler = None
         self._drop_input_refcount = 0
+        self._input_busy = False
+        self._publish_busy = False
 
         self._client = None
         self._wifi_manager = None
@@ -131,12 +133,22 @@ class PepeunitMqttClient:
     def _on_message(self, topic, msg, retained=False, properties=None):
         if self._drop_input_refcount or not self._input_handler:
             return
+        if self._input_busy:
+            print("[throttle] input dropped")
+            return
         m = _Msg()
         m.topic = utils.to_str(topic)
         m.payload = msg
         m.retained = retained
         m.properties = properties
-        utils.spawn(self._input_handler(m))
+        self._input_busy = True
+        utils.spawn(self._run_input_handler(m))
+
+    async def _run_input_handler(self, msg):
+        try:
+            await self._input_handler(msg)
+        finally:
+            self._input_busy = False
 
     def set_input_handler(self, handler):
         self._input_handler = handler
@@ -185,7 +197,13 @@ class PepeunitMqttClient:
     async def publish(self, topic, message, retain=False, qos=0):
         if not self.is_connected():
             return
+        if self._publish_busy:
+            print("[throttle] publish dropped, topic: {}, message: {}".format(topic, message))
+            return
+        self._publish_busy = True
         try:
             await self._client.publish(utils.to_bytes(topic), utils.to_bytes(message), retain=retain, qos=qos)
         except Exception as e:
             self.mark_disconnected("publish failed: {}".format(e))
+        finally:
+            self._publish_busy = False

@@ -18,6 +18,7 @@ class Logger:
         self.ff_console_log_enable = ff_console_log_enable
         self.ff_mqtt_log_enable = ff_mqtt_log_enable
         self.ff_file_log_enable = ff_file_log_enable
+        self._log_busy = False
 
     def _log(self, level_str, message, file_only=False):
         if self.settings and LogLevel.get_int_level(level_str) < LogLevel.get_int_level(self.settings.PU_MIN_LOG_LEVEL):
@@ -33,16 +34,32 @@ class Logger:
         if self.ff_console_log_enable:
             print(log_entry)
 
-        if self.ff_file_log_enable:
-            asyncio.create_task(
-                FileManager.append_ndjson_with_limit(self.log_file_path, log_entry, self.settings.PU_MAX_LOG_LENGTH)
-            )
+        needs_file = self.ff_file_log_enable
+        needs_mqtt = (
+            not file_only
+            and self.ff_mqtt_log_enable
+            and self.mqtt_client
+            and BaseOutputTopicType.LOG_PEPEUNIT in self.schema_manager.output_base_topic
+            and not utils.should_collect_memory(8192)
+        )
 
-        if not file_only and self.ff_mqtt_log_enable and self.mqtt_client and BaseOutputTopicType.LOG_PEPEUNIT in self.schema_manager.output_base_topic:
-            if utils.should_collect_memory(8192):
-                return
-            topic = self.schema_manager.output_base_topic[BaseOutputTopicType.LOG_PEPEUNIT][0]
-            asyncio.create_task(self.mqtt_client.publish(topic, log_entry))
+        if not (needs_file or needs_mqtt):
+            return
+        if self._log_busy:
+            print("[throttle] log dropped")
+            return
+        self._log_busy = True
+        asyncio.create_task(self._write_log(log_entry, needs_file, needs_mqtt))
+
+    async def _write_log(self, log_entry, needs_file, needs_mqtt):
+        try:
+            if needs_file:
+                await FileManager.append_ndjson_with_limit(self.log_file_path, log_entry, self.settings.PU_MAX_LOG_LENGTH)
+            if needs_mqtt:
+                topic = self.schema_manager.output_base_topic[BaseOutputTopicType.LOG_PEPEUNIT][0]
+                await self.mqtt_client.publish(topic, log_entry)
+        finally:
+            self._log_busy = False
 
     def debug(self, message, file_only=False):
         self._log(LogLevel.DEBUG, message, file_only)

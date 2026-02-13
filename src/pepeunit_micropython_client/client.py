@@ -97,7 +97,7 @@ class PepeunitClient:
             except Exception as e:
                 self.logger.error('Error in MQTT handler: ' + str(e))
             finally:
-                self._last_state_send = time.ticks_ms()
+                self._last_state_send = self.time_manager.get_epoch_ms()
         self.mqtt_client.set_input_handler(combined_handler)
 
     def _base_mqtt_input_func(self, msg):

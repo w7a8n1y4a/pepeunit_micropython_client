@@ -12,8 +12,8 @@ client = PepeunitClient(
     log_file_path='/log.json',
     ff_wifi_manager_enable=True,
     ff_console_log_enable=True,
-    ff_mqtt_log_enable=False,
-    ff_file_log_enable=False,
+    ff_mqtt_log_enable=True,
+    ff_file_log_enable=True,
 )
 
 async def _boot_init():
