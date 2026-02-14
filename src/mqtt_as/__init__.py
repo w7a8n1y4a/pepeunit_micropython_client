@@ -157,7 +157,8 @@ class MQTTClient:
                 size += msg_size
                 t = time.ticks_ms()
                 self.last_rx = t
-            await utils.ayield(do_gc=False)
+            else:
+                await utils.ayield(do_gc=False)
         return buffer[:n]
 
     async def _as_write(self, bytes_wr, length=0, sock=None):
@@ -180,7 +181,8 @@ class MQTTClient:
             if n:
                 t = time.ticks_ms()
                 bytes_wr = bytes_wr[n:]
-            await utils.ayield(do_gc=False)
+            else:
+                await utils.ayield(do_gc=False)
 
     async def _send_str(self, s):
         await self._as_write(struct.pack("!H", len(s)))
@@ -342,24 +344,18 @@ class MQTTClient:
         if not await self._await_pid(pid):
             raise OSError(-1)
 
-    async def wait_msg(self):
+    def _try_read_byte(self):
         try:
-            res = self._sock.read(1)
+            return self._sock.read(1)
         except OSError as e:
             if e.args[0] in BUSY_ERRORS:
-                await utils.ayield(do_gc=False)
-                return
+                return None
             raise
 
-        if res is None:
-            return
-        if res == b"":
-            raise OSError(-1, "Empty response")
-
-        if res == b"\xd0":
+    async def _process_msg(self, op):
+        if op == 0xD0:
             await self._as_read(1)
             return
-        op = res[0]
 
         if op == 0x40:
             sz, _ = await self._recv_len()
@@ -389,7 +385,7 @@ class MQTTClient:
         sz, _ = await self._recv_len()
         topic_len = await self._as_read(2)
         topic_len = (topic_len[0] << 8) | topic_len[1]
-        topic = await self._as_read(topic_len, use_ibuf=topic_len <= len(self._ibuf))
+        topic = await self._as_read(topic_len, use_ibuf=True)
         topic = bytes(topic)
         sz -= topic_len + 2
 
@@ -398,7 +394,9 @@ class MQTTClient:
             pid = pid[0] << 8 | pid[1]
             sz -= 2
 
-        msg = await self._as_read(sz, use_ibuf=sz <= len(self._ibuf))
+        if sz > len(self._ibuf) or gc.mem_free() < sz + 512:
+            gc.collect()
+        msg = await self._as_read(sz, use_ibuf=True)
         msg = bytes(msg)
         retained = op & 0x01
         self._cb(topic, msg, bool(retained))
@@ -442,9 +440,15 @@ class MQTTClient:
     async def _handle_msg(self):
         try:
             while self.is_connected():
+                res = self._try_read_byte()
+                if res is None:
+                    await asyncio.sleep_ms(5)
+                    continue
+                if res == b"":
+                    raise OSError(-1, "Empty response")
                 async with self.lock:
-                    await self.wait_msg()
-                await asyncio.sleep_ms(5)
+                    await self._process_msg(res[0])
+                await asyncio.sleep_ms(0)
         except OSError:
             pass
         self._reconnect()

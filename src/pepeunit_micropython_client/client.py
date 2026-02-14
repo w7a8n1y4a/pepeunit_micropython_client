@@ -209,17 +209,17 @@ class PepeunitClient:
                 ok = False
         return ok
 
-    async def _base_mqtt_output_handler(self):
+    def _base_mqtt_output_handler(self):
         current_time = self.time_manager.get_epoch_ms()
         if BaseOutputTopicType.STATE_PEPEUNIT not in self.schema.output_base_topic:
-            return
+            return None
         if (current_time - self._last_state_send) // 1000 < self.settings.PU_STATE_SEND_INTERVAL:
-            return
+            return None
         self._last_state_send = current_time
         if not utils.ensure_memory(6000):
-            return
+            return None
         topic = self.schema.output_base_topic[BaseOutputTopicType.STATE_PEPEUNIT][0]
-        await self.mqtt_client.publish(topic, json.dumps(self.get_system_state()))
+        return self.mqtt_client.publish(topic, json.dumps(self.get_system_state()))
 
     async def run_main_cycle(self, cycle_ms=20):
         self._running = True
@@ -237,7 +237,7 @@ class PepeunitClient:
                 if self.mqtt_output_handler:
                     await utils.maybe_await(self.mqtt_output_handler(self))
 
-                await self._base_mqtt_output_handler()
+                await utils.maybe_await(self._base_mqtt_output_handler())
 
                 await asyncio.sleep_ms(int(cycle_ms))
         finally:
