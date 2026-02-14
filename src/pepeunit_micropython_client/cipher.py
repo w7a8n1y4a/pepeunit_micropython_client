@@ -1,9 +1,39 @@
 import os
 import gc
+import micropython
 
 import utils
 
 import ucryptolib as _cryptolib
+
+
+@micropython.viper
+def _gf_mul_core(z, v, x, y):
+    pz = ptr8(z)
+    pv = ptr8(v)
+    px = ptr8(x)
+    py = ptr8(y)
+    j: int = 0
+    while j < 16:
+        pz[j] = 0
+        pv[j] = px[j]
+        j += 1
+    i: int = 0
+    while i < 128:
+        if (py[i >> 3] >> (7 - (i & 7))) & 1:
+            j = 0
+            while j < 16:
+                pz[j] = pz[j] ^ pv[j]
+                j += 1
+        lsb: int = pv[15] & 1
+        j = 15
+        while j > 0:
+            pv[j] = (pv[j] >> 1) | ((pv[j - 1] & 1) << 7)
+            j -= 1
+        pv[0] = pv[0] >> 1
+        if lsb:
+            pv[0] = pv[0] ^ 0xE1
+        i += 1
 
 
 class AesGcmCipher:
@@ -56,57 +86,47 @@ class AesGcmCipher:
         return plaintext.decode("utf-8")
 
     @staticmethod
-    def _xor_bytes(a, b) -> bytes:
-        n = len(a)
+    @micropython.viper
+    def _xor_bytes(a, b) -> object:
+        n: int = int(len(a))
         out = bytearray(n)
-        for i in range(n):
-            out[i] = a[i] ^ b[i]
+        pa = ptr8(a)
+        pb = ptr8(b)
+        po = ptr8(out)
+        i: int = 0
+        while i < n:
+            po[i] = pa[i] ^ pb[i]
+            i += 1
         return bytes(out)
 
     @staticmethod
-    def _xor_into(out: bytearray, out_offset: int, a, b, n: int) -> None:
-        for i in range(n):
-            out[out_offset + i] = a[i] ^ b[i]
+    @micropython.viper
+    def _xor_into(out, out_offset: int, a, b, n: int):
+        po = ptr8(out)
+        pa = ptr8(a)
+        pb = ptr8(b)
+        i: int = 0
+        while i < n:
+            po[out_offset + i] = pa[i] ^ pb[i]
+            i += 1
 
     @staticmethod
-    def _inc32(counter_block: bytearray) -> None:
-        y = counter_block
-        c = (y[12] << 24) | (y[13] << 16) | (y[14] << 8) | y[15]
+    @micropython.viper
+    def _inc32(counter_block):
+        y = ptr8(counter_block)
+        c: int = (y[12] << 24) | (y[13] << 16) | (y[14] << 8) | y[15]
         c = (c + 1) & 0xFFFFFFFF
         y[12] = (c >> 24) & 0xFF
         y[13] = (c >> 16) & 0xFF
         y[14] = (c >> 8) & 0xFF
         y[15] = c & 0xFF
 
-    async def _gf_mul(self, x, y):
+    def _gf_mul(self, x, y):
         """GF(2^128) multiply using pre-allocated byte arrays.
         Result in self._gf_z; caller must use/copy before next call.
         """
-        z = self._gf_z
-        v = self._gf_v
-
-        for j in range(16):
-            z[j] = 0
-            v[j] = x[j]
-
-        for i in range(128):
-            if (y[i >> 3] >> (7 - (i & 7))) & 1:
-                for j in range(16):
-                    z[j] ^= v[j]
-
-            lsb = v[15] & 1
-
-            for j in range(15, 0, -1):
-                v[j] = (v[j] >> 1) | ((v[j - 1] & 1) << 7)
-            v[0] >>= 1
-
-            if lsb:
-                v[0] ^= 0xE1
-
-            if (i & 31) == 31:
-                await utils.ayield(do_gc=False)
-
-        return z
+        _gf_mul_core(self._gf_z, self._gf_v, x, y)
+        return self._gf_z
 
     async def _ghash_update(self, y, h, data):
         """XOR and GF-multiply data blocks into y (bytearray 16) in place."""
@@ -118,13 +138,13 @@ class AesGcmCipher:
             for i in range(0, full, 16):
                 for j in range(16):
                     y[j] ^= mv[i + j]
-                y[:] = await self._gf_mul(y, h)
+                y[:] = self._gf_mul(y, h)
                 await utils.ayield((i >> 4) + 1, every=32, do_gc=False)
 
         if n != full:
             for j in range(n - full):
                 y[j] ^= mv[full + j]
-            y[:] = await self._gf_mul(y, h)
+            y[:] = self._gf_mul(y, h)
 
     async def _ghash(self, H, aad, ciphertext):
         """GHASH; result in self._gf_z (valid until next _gf_mul)."""
@@ -148,7 +168,7 @@ class AesGcmCipher:
             y[j] ^= bits & 0xFF
             bits >>= 8
 
-        return await self._gf_mul(y, H)
+        return self._gf_mul(y, H)
 
     async def _aes_gcm_encrypt(self, plaintext: bytes, nonce: bytes, key: bytes) -> tuple:
         ecb = _cryptolib.aes(key, 1)

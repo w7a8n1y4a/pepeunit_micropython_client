@@ -2,6 +2,7 @@ import gc
 import socket
 import struct
 import time
+import micropython
 
 gc.collect()
 import uasyncio as asyncio
@@ -27,12 +28,14 @@ def pid_gen():
         yield pid
 
 
-def vbi(buf: bytearray, offs: int, x: int):
+@micropython.viper
+def vbi(buf, offs: int, x: int) -> int:
+    pb = ptr8(buf)
     while True:
-        buf[offs] = x & 0x7F
-        x >>= 7
+        pb[offs] = x & 0x7F
+        x = int(x) >> 7
         if x:
-            buf[offs] |= 0x80
+            pb[offs] = pb[offs] | 0x80
             offs += 1
             continue
         return offs + 1
