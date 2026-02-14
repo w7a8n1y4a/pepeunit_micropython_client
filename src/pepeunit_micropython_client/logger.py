@@ -40,7 +40,7 @@ class Logger:
             and self.ff_mqtt_log_enable
             and self.mqtt_client
             and BaseOutputTopicType.LOG_PEPEUNIT in self.schema_manager.output_base_topic
-            and not utils.should_collect_memory(8192)
+            and utils.ensure_memory(8192)
         )
 
         if not (needs_file or needs_mqtt):

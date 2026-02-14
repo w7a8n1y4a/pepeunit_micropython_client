@@ -300,20 +300,27 @@ class MQTTClient:
             count += 1
 
     async def _publish(self, topic, msg, retain, qos, dup, pid, properties=None):
-        pkt = bytearray(b"\x30\0\0\0")
-        pkt[0] |= qos << 1 | retain | dup << 3
-        sz = 2 + len(topic) + len(msg)
+        t_len = len(topic)
+        m_len = len(msg)
+        sz = 2 + t_len + m_len
         if qos > 0:
             sz += 2
 
-        await self._as_write(pkt, vbi(pkt, 1, sz))
-        await self._send_str(topic)
-
+        # header byte (1) + VBI (max 4) + topic_len (2) + topic + pid (0|2) + msg
+        buf = bytearray(5 + sz)
+        buf[0] = 0x30 | (qos << 1) | retain | (dup << 3)
+        offs = vbi(buf, 1, sz)
+        struct.pack_into("!H", buf, offs, t_len)
+        offs += 2
+        buf[offs:offs + t_len] = topic
+        offs += t_len
         if qos > 0:
-            struct.pack_into("!H", pkt, 0, pid)
-            await self._as_write(pkt, 2)
+            struct.pack_into("!H", buf, offs, pid)
+            offs += 2
+        buf[offs:offs + m_len] = msg
+        offs += m_len
 
-        await self._as_write(msg)
+        await self._as_write(buf, offs)
 
     async def _usub(self, topic, qos, _properties):
         sub = qos is not None
@@ -428,7 +435,7 @@ class MQTTClient:
         self._state = self.CONNECTED
         self._has_connected = True
 
-        asyncio.create_task(self._handle_msg())
+        self._tasks.append(asyncio.create_task(self._handle_msg()))
         self._tasks.append(asyncio.create_task(self._keep_alive()))
         asyncio.create_task(self._connect_handler(self))
 

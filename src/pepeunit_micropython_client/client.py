@@ -187,8 +187,7 @@ class PepeunitClient:
 
             async def on_line(line):
                 await self.mqtt_client.publish(topic, line)
-                if utils.should_collect_memory(8000):
-                    gc.collect()
+                utils.ensure_memory(8000)
                 await asyncio.sleep_ms(50)
 
             await FileManager.iter_lines_bytes_cb(self.logger.log_file_path, on_line, yield_every=32)
@@ -203,21 +202,24 @@ class PepeunitClient:
         topics = self.schema.output_topic.get(topic_key) or self.schema.output_base_topic.get(topic_key)
         if not topics:
             self.logger.warning("No MQTT topics for key: {}".format(topic_key), file_only=True)
-            return
+            return False
+        ok = True
         for topic in topics:
-            await self.mqtt_client.publish(topic, message)
+            if not await self.mqtt_client.publish(topic, message):
+                ok = False
+        return ok
 
-    def _base_mqtt_output_handler(self):
+    async def _base_mqtt_output_handler(self):
         current_time = self.time_manager.get_epoch_ms()
         if BaseOutputTopicType.STATE_PEPEUNIT not in self.schema.output_base_topic:
             return
         if (current_time - self._last_state_send) // 1000 < self.settings.PU_STATE_SEND_INTERVAL:
             return
         self._last_state_send = current_time
-        if utils.should_collect_memory(6000):
+        if not utils.ensure_memory(6000):
             return
         topic = self.schema.output_base_topic[BaseOutputTopicType.STATE_PEPEUNIT][0]
-        asyncio.create_task(self.mqtt_client.publish(topic, json.dumps(self.get_system_state())))
+        await self.mqtt_client.publish(topic, json.dumps(self.get_system_state()))
 
     async def run_main_cycle(self, cycle_ms=20):
         self._running = True
@@ -235,7 +237,7 @@ class PepeunitClient:
                 if self.mqtt_output_handler:
                     await utils.maybe_await(self.mqtt_output_handler(self))
 
-                self._base_mqtt_output_handler()
+                await self._base_mqtt_output_handler()
 
                 await asyncio.sleep_ms(int(cycle_ms))
         finally:

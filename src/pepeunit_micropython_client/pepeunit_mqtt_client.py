@@ -1,4 +1,5 @@
 import time
+import uasyncio as asyncio
 import utils
 
 from mqtt_as import MQTTClient
@@ -43,7 +44,7 @@ class PepeunitMqttClient:
         self._input_handler = None
         self._drop_input_refcount = 0
         self._input_busy = False
-        self._publish_busy = False
+        self._publish_lock = asyncio.Lock()
 
         self._client = None
         self._wifi_manager = None
@@ -196,14 +197,13 @@ class PepeunitMqttClient:
 
     async def publish(self, topic, message, retain=False, qos=0):
         if not self.is_connected():
-            return
-        if self._publish_busy:
-            print("[throttle] publish dropped, topic: {}, message: {}".format(topic, message))
-            return
-        self._publish_busy = True
-        try:
-            await self._client.publish(utils.to_bytes(topic), utils.to_bytes(message), retain=retain, qos=qos)
-        except Exception as e:
-            self.mark_disconnected("publish failed: {}".format(e))
-        finally:
-            self._publish_busy = False
+            return False
+        async with self._publish_lock:
+            if not self.is_connected():
+                return False
+            try:
+                await self._client.publish(utils.to_bytes(topic), utils.to_bytes(message), retain=retain, qos=qos)
+                return True
+            except Exception as e:
+                self.mark_disconnected("publish failed: {}".format(e))
+                return False

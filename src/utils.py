@@ -73,6 +73,13 @@ def should_collect_memory(threshold=8000):
     return gc.mem_free() < threshold
 
 
+def ensure_memory(threshold=8000):
+    if gc.mem_free() >= threshold:
+        return True
+    gc.collect()
+    return gc.mem_free() >= threshold
+
+
 def spawn(coro):
     if coro is None:
         return
