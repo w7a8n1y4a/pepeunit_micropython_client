@@ -239,6 +239,7 @@ class PepeunitClient:
 
                 await utils.maybe_await(self._base_mqtt_output_handler())
 
+                utils.ensure_memory()
                 await asyncio.sleep_ms(int(cycle_ms))
         finally:
             self._running = False
