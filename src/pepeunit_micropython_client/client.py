@@ -179,20 +179,16 @@ class PepeunitClient:
             return
         topic = self.schema.output_base_topic[BaseOutputTopicType.LOG_PEPEUNIT][0]
 
-        async def _trim_and_send():
-            try:
-                await FileManager.trim_ndjson(self.logger.log_file_path, self.settings.PU_MAX_LOG_LENGTH)
-            except Exception as e:
-                self.logger.warning("Log trim failed: {}".format(e), file_only=True)
-
+        async def _send_logs():
             async def on_line(line):
                 await self.mqtt_client.publish(topic, line)
                 utils.ensure_memory(8000)
                 await asyncio.sleep_ms(50)
 
+            await FileManager.iter_lines_bytes_cb(self.logger.log_old_path, on_line, yield_every=32)
             await FileManager.iter_lines_bytes_cb(self.logger.log_file_path, on_line, yield_every=32)
 
-        asyncio.create_task(_trim_and_send())
+        asyncio.create_task(_send_logs())
         self.logger.info('Scheduled log sync to MQTT')
 
     def subscribe_all_schema_topics(self):
@@ -219,6 +215,7 @@ class PepeunitClient:
         if not utils.ensure_memory(6000):
             return None
         topic = self.schema.output_base_topic[BaseOutputTopicType.STATE_PEPEUNIT][0]
+        print("STATE_SEND")
         return self.mqtt_client.publish(topic, json.dumps(self.get_system_state()))
 
     async def run_main_cycle(self, cycle_ms=20):

@@ -52,24 +52,6 @@ class FileManager:
         return exists
 
     @staticmethod
-    async def append_ndjson_with_limit(file_path, item, max_lines, *, yield_every=32):
-        dirpath = utils.dirname(file_path)
-        await FileManager._ensure_dir(dirpath, yield_every=yield_every)
-
-        try:
-            with open(file_path, 'a') as f:
-                if isinstance(item, str):
-                    f.write(item)
-                else:
-                    json.dump(item, f)
-                f.write('\n')
-        except Exception:
-            pass
-
-        await utils.ayield(do_gc=False)
-        await FileManager.trim_ndjson(file_path, max_lines, yield_every=yield_every)
-
-    @staticmethod
     async def iter_lines_bytes_cb(file_path, on_line, *, yield_every=32):
         try:
             with open(file_path, 'rb') as f:
@@ -83,39 +65,6 @@ class FileManager:
                     await utils.ayield(idx, every=yield_every, do_gc=False)
         except Exception:
             return
-
-    @staticmethod
-    async def trim_ndjson(file_path, max_lines, *, yield_every=32):
-        if max_lines <= 0:
-            return
-        try:
-            total = 0
-            tail = [None] * max_lines
-            ti = 0
-            with open(file_path, 'r') as f:
-                for line in f:
-                    total += 1
-                    tail[ti] = line
-                    ti = (ti + 1) % max_lines
-                    await utils.ayield(total, every=yield_every, do_gc=False)
-            if total <= max_lines:
-                return
-            tmp_path = file_path + '.tmp'
-            with open(tmp_path, 'w') as dst:
-                idx = 0
-                while idx < max_lines:
-                    line = tail[(ti + idx) % max_lines]
-                    if line is not None:
-                        dst.write(line)
-                    idx += 1
-                    await utils.ayield(idx, every=yield_every, do_gc=False)
-            try:
-                os.rename(tmp_path, file_path)
-            except Exception:
-                pass
-            gc.collect()
-        except Exception:
-            pass
 
     @staticmethod
     async def extract_tar_gz(tgz_path, dest_root, *, copy_chunk=256, yield_every=16):

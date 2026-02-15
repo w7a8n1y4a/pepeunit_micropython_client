@@ -256,6 +256,7 @@ class MQTTClient:
 
     async def _ping(self):
         async with self.lock:
+            print("PING")
             await self._as_write(b"\xc0\0")
 
     async def disconnect(self):

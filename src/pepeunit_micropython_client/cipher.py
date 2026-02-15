@@ -86,17 +86,11 @@ class AesGcmCipher:
         return plaintext.decode("utf-8")
 
     @staticmethod
-    @micropython.viper
-    def _xor_bytes(a, b) -> object:
-        n: int = int(len(a))
+    def _xor_bytes(a, b):
+        n = len(a)
         out = bytearray(n)
-        pa = ptr8(a)
-        pb = ptr8(b)
-        po = ptr8(out)
-        i: int = 0
-        while i < n:
-            po[i] = pa[i] ^ pb[i]
-            i += 1
+        for i in range(n):
+            out[i] = a[i] ^ b[i]
         return bytes(out)
 
     @staticmethod
@@ -111,15 +105,13 @@ class AesGcmCipher:
             i += 1
 
     @staticmethod
-    @micropython.viper
     def _inc32(counter_block):
-        y = ptr8(counter_block)
-        c: int = (y[12] << 24) | (y[13] << 16) | (y[14] << 8) | y[15]
+        c = (counter_block[12] << 24) | (counter_block[13] << 16) | (counter_block[14] << 8) | counter_block[15]
         c = (c + 1) & 0xFFFFFFFF
-        y[12] = (c >> 24) & 0xFF
-        y[13] = (c >> 16) & 0xFF
-        y[14] = (c >> 8) & 0xFF
-        y[15] = c & 0xFF
+        counter_block[12] = (c >> 24) & 0xFF
+        counter_block[13] = (c >> 16) & 0xFF
+        counter_block[14] = (c >> 8) & 0xFF
+        counter_block[15] = c & 0xFF
 
     def _gf_mul(self, x, y):
         """GF(2^128) multiply using pre-allocated byte arrays.
