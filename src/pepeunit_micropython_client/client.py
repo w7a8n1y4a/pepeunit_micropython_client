@@ -175,18 +175,7 @@ class PepeunitClient:
     def _handle_log_sync(self):
         if not self.logger.ff_file_log_enable:
             return
-        topic = self.schema.output_base_topic[BaseOutputTopicType.LOG_PEPEUNIT][0]
-
-        async def _send_logs():
-            async def on_line(line):
-                await self.mqtt_client.publish(topic, line)
-                utils.ensure_memory(8000)
-                await asyncio.sleep_ms(50)
-
-            await FileManager.iter_lines_bytes_cb(self.logger.log_old_path, on_line, yield_every=32)
-            await FileManager.iter_lines_bytes_cb(self.logger.log_file_path, on_line, yield_every=32)
-
-        asyncio.create_task(_send_logs())
+        asyncio.create_task(self.logger.sync_logs_to_mqtt())
         self.logger.info('Scheduled log sync to MQTT')
 
     def subscribe_all_schema_topics(self):

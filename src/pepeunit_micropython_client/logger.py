@@ -4,6 +4,7 @@ import os
 import utils
 
 from .enums import LogLevel, BaseOutputTopicType
+from .file_manager import FileManager
 
 import uasyncio as asyncio
 
@@ -20,6 +21,7 @@ class Logger:
         self.ff_mqtt_log_enable = ff_mqtt_log_enable
         self.ff_file_log_enable = ff_file_log_enable
         self._log_lock = asyncio.Lock()
+        self._sync_busy = False
 
     def _log(self, level_str, message, file_only=False):
         if self.settings and LogLevel.get_int_level(level_str) < LogLevel.get_int_level(self.settings.PU_MIN_LOG_LEVEL):
@@ -32,6 +34,9 @@ class Logger:
             and self.mqtt_client
             and BaseOutputTopicType.LOG_PEPEUNIT in self.schema_manager.output_base_topic
         )
+        if self._sync_busy:
+            needs_file = False
+            needs_mqtt = False
         needs_write = needs_file or needs_mqtt
 
         if not needs_write and not self.ff_console_log_enable:
@@ -101,6 +106,25 @@ class Logger:
 
     def critical(self, message, file_only=False):
         self._log(LogLevel.CRITICAL, message, file_only)
+
+    async def sync_logs_to_mqtt(self):
+        if not self.ff_file_log_enable or not self.mqtt_client or not self.schema_manager:
+            return
+        if BaseOutputTopicType.LOG_PEPEUNIT not in self.schema_manager.output_base_topic:
+            return
+        topic = self.schema_manager.output_base_topic[BaseOutputTopicType.LOG_PEPEUNIT][0]
+
+        self._sync_busy = True
+        try:
+            async def on_line(line):
+                await self.mqtt_client.publish(topic, line)
+                utils.ensure_memory(8000)
+                await asyncio.sleep_ms(50)
+
+            await FileManager.iter_lines_bytes_cb(self.log_old_path, on_line, yield_every=32)
+            await FileManager.iter_lines_bytes_cb(self.log_file_path, on_line, yield_every=32)
+        finally:
+            self._sync_busy = False
 
     async def reset_log(self):
         if not self.ff_file_log_enable:
