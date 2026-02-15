@@ -166,6 +166,7 @@ class PepeunitMqttClient:
             ping_interval=self.settings.PU_MQTT_PING_INTERVAL,
             client_id=utils.to_bytes(self.settings.unit_uuid),
             subs_cb=self._on_message,
+            should_drop=lambda: bool(self._drop_input_refcount),
         )
         await self._client.connect()
         self._state = self.CONNECTED

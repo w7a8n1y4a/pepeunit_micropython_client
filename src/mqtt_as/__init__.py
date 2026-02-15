@@ -92,6 +92,7 @@ class MQTTClient:
         clean=True,
         max_repubs=4,
         subs_cb=None,
+        should_drop=None,
         connect_coro=eliza,
     ):
         self._client_id = client_id
@@ -115,6 +116,7 @@ class MQTTClient:
         self._ssl = ssl
         self._ssl_params = ssl_params or {}
         self._cb = subs_cb or (lambda *_: None)
+        self._should_drop = should_drop
         self._connect_handler = connect_coro
 
         self.port = port or (8883 if ssl else 1883)
@@ -350,7 +352,10 @@ class MQTTClient:
 
     def _try_read_byte(self):
         try:
-            return self._sock.read(1)
+            res = self._sock.read(1)
+            if res:
+                self.last_rx = time.ticks_ms()
+            return res
         except OSError as e:
             if e.args[0] in BUSY_ERRORS:
                 return None
@@ -390,20 +395,25 @@ class MQTTClient:
         topic_len = await self._as_read(2)
         topic_len = (topic_len[0] << 8) | topic_len[1]
         topic = await self._as_read(topic_len, use_ibuf=True)
-        topic = bytes(topic)
+        deliver = not self._should_drop or not self._should_drop()
+        if deliver:
+            topic = bytes(topic)
         sz -= topic_len + 2
 
+        pid = None
         if op & 6:
-            pid = await self._as_read(2)
-            pid = pid[0] << 8 | pid[1]
+            pid_data = await self._as_read(2)
+            pid = pid_data[0] << 8 | pid_data[1]
             sz -= 2
 
         if sz > len(self._ibuf) or gc.mem_free() < sz + 512:
             gc.collect()
         msg = await self._as_read(sz, use_ibuf=True)
-        msg = bytes(msg)
-        retained = op & 0x01
-        self._cb(topic, msg, bool(retained))
+
+        if deliver:
+            msg = bytes(msg)
+            retained = op & 0x01
+            self._cb(topic, msg, bool(retained))
 
         if op & 6 == 2:
             pkt = bytearray(b"\x40\x02\0\0")
