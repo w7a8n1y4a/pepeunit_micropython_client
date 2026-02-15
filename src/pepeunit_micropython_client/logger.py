@@ -76,7 +76,7 @@ class Logger:
             size = os.stat(self.log_file_path)[6]
         except OSError:
             return
-        if size < self.settings.PU_MAX_LOG_LENGTH * 1024:
+        if size < self.settings.PU_MAX_LOG_LENGTH * 64:
             return
         try:
             os.remove(self.log_old_path)
