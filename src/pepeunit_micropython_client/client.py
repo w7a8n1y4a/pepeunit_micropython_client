@@ -96,8 +96,6 @@ class PepeunitClient:
                     await self.mqtt_input_handler(self, msg)
             except Exception as e:
                 self.logger.error('Error in MQTT handler: ' + str(e))
-            finally:
-                self._last_state_send = self.time_manager.get_epoch_ms()
         self.mqtt_client.set_input_handler(combined_handler)
 
     def _base_mqtt_input_func(self, msg):
@@ -227,7 +225,8 @@ class PepeunitClient:
                     self._resubscribe_requested = True
                 if self._resubscribe_requested and self.mqtt_client.is_connected():
                     try:
-                        await self.mqtt_client.subscribe_all_schema_topics()
+                        async with self.mqtt_client.drop_input():
+                            await self.mqtt_client.subscribe_all_schema_topics()
                     finally:
                         self._resubscribe_requested = False
 
