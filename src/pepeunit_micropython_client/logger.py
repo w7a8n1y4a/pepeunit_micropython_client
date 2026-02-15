@@ -19,7 +19,7 @@ class Logger:
         self.ff_console_log_enable = ff_console_log_enable
         self.ff_mqtt_log_enable = ff_mqtt_log_enable
         self.ff_file_log_enable = ff_file_log_enable
-        self._log_busy = False
+        self._log_lock = asyncio.Lock()
 
     def _log(self, level_str, message, file_only=False):
         if self.settings and LogLevel.get_int_level(level_str) < LogLevel.get_int_level(self.settings.PU_MIN_LOG_LEVEL):
@@ -36,12 +36,6 @@ class Logger:
 
         if not needs_write and not self.ff_console_log_enable:
             return
-
-        # # Check throttle BEFORE allocating the log_entry string
-        # if needs_write and self._log_busy:
-        #     if self.ff_console_log_enable:
-        #         print("[throttle] log dropped")
-        #     return
 
         log_entry = '{"level":"%s","text":%s,"create_datetime":%d,"free_mem":%d}' % (
             level_str,
@@ -61,11 +55,10 @@ class Logger:
             if not needs_file:
                 return
 
-        self._log_busy = True
         asyncio.create_task(self._write_log(log_entry, needs_file, needs_mqtt))
 
     async def _write_log(self, log_entry, needs_file, needs_mqtt):
-        try:
+        async with self._log_lock:
             if needs_file:
                 try:
                     with open(self.log_file_path, 'a') as f:
@@ -77,8 +70,6 @@ class Logger:
             if needs_mqtt:
                 topic = self.schema_manager.output_base_topic[BaseOutputTopicType.LOG_PEPEUNIT][0]
                 await self.mqtt_client.publish(topic, log_entry)
-        finally:
-            self._log_busy = False
 
     def _rotate_if_needed(self):
         try:
