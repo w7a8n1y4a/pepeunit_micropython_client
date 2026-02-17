@@ -5,6 +5,7 @@ freeze("$(PORT_DIR)/modules")
 include("$(MPY_DIR)/extmod/asyncio")
 
 # Minimal required micropython-lib deps
+require("ssl")
 require("upysh")
 # NTP time sync for TimeManager
 require("ntptime")

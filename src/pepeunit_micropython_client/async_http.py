@@ -3,7 +3,11 @@ import utils
 
 import socket
 import gc
-import ssl
+try:
+    import ssl
+except ImportError:
+    import ussl as ssl
+
 import sys
 
 from errno import EINPROGRESS, ETIMEDOUT
