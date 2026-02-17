@@ -56,10 +56,23 @@ class PepeunitMqttClient:
     def set_wifi_manager(self, wifi_manager):
         self._wifi_manager = wifi_manager
 
+    @property
+    def connection_state(self):
+        return self._state
+
+    def _can_publish(self):
+        if self._wifi_manager and not self._wifi_manager.is_connected():
+            return False
+        if not self._client or not self._client.is_connected():
+            return False
+        return True
+
     def is_connected(self):
+        return self._state == self.CONNECTED
+
+    def _sync_state_from_client(self):
         if self._state >= self.CONNECTED and not (self._client and self._client.is_connected()):
-            self._state = self.DISCONNECTED
-        return self._state >= self.CONNECTED
+            self.mark_disconnected("client disconnected")
 
     def mark_disconnected(self, reason=None):
         self._state = self.DISCONNECTED
@@ -124,6 +137,7 @@ class PepeunitMqttClient:
                 self._state = self.DISCONNECTED
 
     async def ensure_connected(self):
+        self._sync_state_from_client()
         now = time.ticks_ms()
         if self._should_attempt_reconnect(now):
             await self._attempt_reconnect(now)
@@ -197,10 +211,10 @@ class PepeunitMqttClient:
             self.mark_disconnected("subscribe failed: {}".format(e))
 
     async def publish(self, topic, message, retain=False, qos=0):
-        if not self.is_connected():
+        if not self._can_publish():
             return False
         async with self._publish_lock:
-            if not self.is_connected():
+            if not self._can_publish():
                 return False
             try:
                 await self._client.publish(utils.to_bytes(topic), utils.to_bytes(message), retain=retain, qos=qos)

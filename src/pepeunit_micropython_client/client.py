@@ -193,6 +193,8 @@ class PepeunitClient:
         return ok
 
     def _base_mqtt_output_handler(self):
+        if not self.mqtt_client.is_connected():
+            return None
         current_time = self.time_manager.get_epoch_ms()
         if BaseOutputTopicType.STATE_PEPEUNIT not in self.schema.output_base_topic:
             return None
@@ -219,10 +221,10 @@ class PepeunitClient:
                     finally:
                         self._resubscribe_requested = False
 
-                if self.mqtt_output_handler:
-                    await utils.maybe_await(self.mqtt_output_handler(self))
-
-                await utils.maybe_await(self._base_mqtt_output_handler())
+                if self.mqtt_client.is_connected():
+                    if self.mqtt_output_handler:
+                        await utils.maybe_await(self.mqtt_output_handler(self))
+                    await utils.maybe_await(self._base_mqtt_output_handler())
 
                 utils.ensure_memory()
                 await asyncio.sleep_ms(int(cycle_ms))

@@ -130,8 +130,7 @@ async def main_async(client: PepeunitClient):
     await test_cipher(client)
     
     client.set_mqtt_input_handler(input_handler)
-    await client.mqtt_client.connect()
-    await client.mqtt_client.subscribe_all_schema_topics()
+    client.subscribe_all_schema_topics()
     client.set_output_handler(output_handler)
     await client.run_main_cycle()
 

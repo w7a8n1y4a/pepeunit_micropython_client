@@ -148,7 +148,7 @@ class MQTTClient:
         size = 0
         t = time.ticks_ms()
         while size < n:
-            if self._timeout(t) or not self.is_connected():
+            if self._timeout(t) or self._state == self.DISCONNECTED:
                 raise OSError(-1, "Timeout on socket read")
             try:
                 msg_size = sock.readinto(buffer[size:], n - size)
@@ -175,7 +175,7 @@ class MQTTClient:
             bytes_wr = bytes_wr[:length]
         t = time.ticks_ms()
         while bytes_wr:
-            if self._timeout(t) or not self.is_connected():
+            if self._timeout(t) or self._state == self.DISCONNECTED:
                 raise OSError(-1, "Timeout on socket write")
             try:
                 n = sock.write(bytes_wr)
@@ -281,7 +281,7 @@ class MQTTClient:
     async def _await_pid(self, pid):
         t = time.ticks_ms()
         while pid in self.rcv_pids:
-            if self._timeout(t) or not self.is_connected():
+            if self._timeout(t) or self._state == self.DISCONNECTED:
                 break
             await asyncio.sleep_ms(100)
         else:
@@ -301,7 +301,7 @@ class MQTTClient:
         while 1:
             if await self._await_pid(pid):
                 return
-            if count >= self._max_repubs or not self.is_connected():
+            if count >= self._max_repubs or self._state != self.CONNECTED:
                 raise OSError(-1)
             async with self.lock:
                 await self._publish(topic, msg, retain, qos, dup=1, pid=pid, properties=properties)
@@ -453,7 +453,7 @@ class MQTTClient:
 
     async def _handle_msg(self):
         try:
-            while self.is_connected():
+            while self._state == self.CONNECTED:
                 res = self._try_read_byte()
                 if res is None:
                     await asyncio.sleep_ms(5)
@@ -468,7 +468,7 @@ class MQTTClient:
         self._reconnect()
 
     async def _keep_alive(self):
-        while self.is_connected():
+        while self._state == self.CONNECTED:
             pings_due = time.ticks_diff(time.ticks_ms(), self.last_rx) // self._ping_interval
             if pings_due >= 4:
                 break
@@ -487,8 +487,12 @@ class MQTTClient:
         if kill_skt:
             self._close()
 
+    @property
+    def connection_state(self):
+        return self._state
+
     def is_connected(self):
-        return self._state > self.DISCONNECTED
+        return self._state == self.CONNECTED
 
     def _reconnect(self):
         if self._state != self.DISCONNECTED:

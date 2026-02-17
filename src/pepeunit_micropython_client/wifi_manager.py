@@ -37,14 +37,19 @@ class WifiManager:
             self._sta = sta
         return self._sta
 
-    def is_connected(self):
-        hw = bool(self.get_sta().isconnected())
-        if hw:
-            if self._state < self.CONNECTED:
-                self._state = self.CONNECTED
-        elif self._state >= self.CONNECTED:
+    @property
+    def connection_state(self):
+        return self._state
+
+    def is_wifi_linked(self):
+        return bool(self.get_sta().isconnected())
+
+    def _sync_state_from_hardware(self):
+        if not self.is_wifi_linked() and self._state >= self.CONNECTED:
             self._state = self.DISCONNECTED
-        return self._state >= self.CONNECTED
+
+    def is_connected(self):
+        return self._state == self.CONNECTED
 
     async def _force_sta_reset(self):
         self.logger.info("WiFi station prepare", file_only=True)
@@ -99,6 +104,7 @@ class WifiManager:
     async def connect_forever(self, connect_timeout_ms=10000):
         attempt = 0
         while True:
+            self._sync_state_from_hardware()
             if self.is_connected():
                 ssid = utils.to_str(self.get_sta().config("essid"))
                 if not self.settings.PUC_WIFI_SSID or ssid == self.settings.PUC_WIFI_SSID:
@@ -134,6 +140,7 @@ class WifiManager:
             attempt += 1
 
     async def ensure_connected(self, connect_timeout_ms=10000):
+        self._sync_state_from_hardware()
         if not self.is_connected():
             return await self.connect_forever(connect_timeout_ms=connect_timeout_ms)
         return True
