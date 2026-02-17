@@ -122,9 +122,6 @@ async def test_cipher(client: PepeunitClient):
 
 
 async def main_async(client: PepeunitClient):
-    await client.wifi_manager.ensure_connected()
-    await client.time_manager.sync_epoch_ms_from_ntp()
-
     await test_set_get_storage(client)
     await test_get_units(client)
     await test_cipher(client)
