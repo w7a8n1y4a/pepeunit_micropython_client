@@ -14,6 +14,7 @@ It shows how to:
 - Storage api
 - Units Nodes api
 - Cipher api
+- Async work
 """
 
 import time

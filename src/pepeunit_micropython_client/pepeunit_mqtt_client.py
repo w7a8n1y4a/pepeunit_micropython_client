@@ -149,7 +149,7 @@ class PepeunitMqttClient:
         if self._drop_input_refcount or not self._input_handler:
             return
         if self._input_busy:
-            print("[throttle] input dropped")
+            print("THROTTLE DROP MQTT INPUT")
             return
         m = _Msg()
         m.topic = utils.to_str(topic)
