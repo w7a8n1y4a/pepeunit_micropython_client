@@ -3,6 +3,7 @@ variables:
   DOCKER_IMAGE_NAME: $CI_REGISTRY_IMAGE/$CI_COMMIT_REF_SLUG
   MPY_TAG: "v1.27.0"
   BOARDS: "ALL"
+  GITLAB_API: "https://git.pepemoss.com/api/v4"
 
 stages:
   - build
@@ -29,19 +30,14 @@ build:firmware:
         filename=$(basename "$file")
         curl --fail --header "PRIVATE-TOKEN: $CI_ACCESS_TOKEN" \
           --upload-file "$file" \
-          "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/firmware/${CI_COMMIT_TAG}/${filename}"
+          "${GITLAB_API}/projects/${CI_PROJECT_ID}/packages/generic/firmware/${CI_COMMIT_TAG}/${filename}"
       done
-    - |
-      curl --fail --request POST "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/releases" \
-        --header "PRIVATE-TOKEN: $CI_ACCESS_TOKEN" \
-        --data "name=Release ${CI_COMMIT_TAG}" \
-        --data "tag_name=${CI_COMMIT_TAG}" \
-        --data "description=MicroPython firmware builds for ${CI_COMMIT_TAG}"
+    - 'curl --fail --request POST "${GITLAB_API}/projects/${CI_PROJECT_ID}/releases" --header "PRIVATE-TOKEN: $CI_ACCESS_TOKEN" --data "name=Release ${CI_COMMIT_TAG}" --data "tag_name=${CI_COMMIT_TAG}" --data "description=MicroPython firmware builds for ${CI_COMMIT_TAG}"'
     - |
       for file in output/*.bin; do
         filename=$(basename "$file")
-        url="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/firmware/${CI_COMMIT_TAG}/${filename}"
-        curl --fail --request POST "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/releases/${CI_COMMIT_TAG}/assets/links" \
+        url="${GITLAB_API}/projects/${CI_PROJECT_ID}/packages/generic/firmware/${CI_COMMIT_TAG}/${filename}"
+        curl --fail --request POST "${GITLAB_API}/projects/${CI_PROJECT_ID}/releases/${CI_COMMIT_TAG}/assets/links" \
           --header "PRIVATE-TOKEN: $CI_ACCESS_TOKEN" \
           --data-urlencode "name=${filename}" \
           --data-urlencode "url=${url}" \
