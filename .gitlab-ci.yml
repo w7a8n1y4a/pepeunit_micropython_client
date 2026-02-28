@@ -1,0 +1,52 @@
+variables:
+  DOCKER_IMAGE_TAG: $CI_PIPELINE_IID
+  DOCKER_IMAGE_NAME: $CI_REGISTRY_IMAGE/$CI_COMMIT_REF_SLUG
+  MPY_TAG: "v1.27.0"
+  BOARDS: "ALL"
+
+stages:
+  - build
+
+build:firmware:
+  stage: build
+  tags:
+    - shell-build-runer
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: on_success
+  script:
+    - >-
+      docker build
+      --build-arg TAG=$MPY_TAG
+      --build-arg VERSION=$CI_COMMIT_TAG
+      --build-arg BOARDS=$BOARDS
+      -t $DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG .
+    - docker create --name temp_container_$CI_PIPELINE_IID $DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG
+    - docker cp temp_container_$CI_PIPELINE_IID:/output .
+    - docker rm temp_container_$CI_PIPELINE_IID
+    - |
+      for file in output/*.bin; do
+        filename=$(basename "$file")
+        curl --fail --header "PRIVATE-TOKEN: $CI_ACCESS_TOKEN" \
+          --upload-file "$file" \
+          "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/firmware/${CI_COMMIT_TAG}/${filename}"
+      done
+    - |
+      curl --fail --request POST "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/releases" \
+        --header "PRIVATE-TOKEN: $CI_ACCESS_TOKEN" \
+        --data "name=Release ${CI_COMMIT_TAG}" \
+        --data "tag_name=${CI_COMMIT_TAG}" \
+        --data "description=MicroPython firmware builds for ${CI_COMMIT_TAG}"
+    - |
+      for file in output/*.bin; do
+        filename=$(basename "$file")
+        url="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/firmware/${CI_COMMIT_TAG}/${filename}"
+        curl --fail --request POST "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/releases/${CI_COMMIT_TAG}/assets/links" \
+          --header "PRIVATE-TOKEN: $CI_ACCESS_TOKEN" \
+          --data-urlencode "name=${filename}" \
+          --data-urlencode "url=${url}" \
+          --data "link_type=package"
+      done
+  after_script:
+    - docker rm temp_container_$CI_PIPELINE_IID 2>/dev/null || true
+    - docker rmi $DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG 2>/dev/null || true

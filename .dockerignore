@@ -1,0 +1,7 @@
+.git
+micropython/
+*.bin
+__pycache__
+env.json
+schema.json
+example/lib/

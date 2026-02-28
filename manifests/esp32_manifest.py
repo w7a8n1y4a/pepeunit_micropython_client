@@ -18,6 +18,5 @@ require("ssd1306")
 
 # Freeze all project modules from the external src directory so they are
 # available as a built-in package in the firmware.
-freeze("/home/w7a8n1y4a/Documents/gitlab/pepe/pepeunit/libs/pepeunit_micropython_client/src")
-
-
+import os
+freeze(os.environ["PEPEUNIT_SRC_DIR"])

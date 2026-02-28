@@ -1,11 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BOARD="${1:?Usage: $0 <BOARD> <TAG> <VERSION>
-Supported boards: ESP8266_GENERIC  ESP32_GENERIC  ESP32_GENERIC_S3  ESP32_GENERIC_C3
-Example: $0 ESP32_GENERIC v1.27.0 v1.1.1}"
-TAG="${2:?Usage: $0 <BOARD> <TAG> <VERSION>}"
-VERSION="${3:?Usage: $0 <BOARD> <TAG> <VERSION>}"
+ALL_BOARDS="ESP8266_GENERIC ESP32_GENERIC ESP32_GENERIC_S3 ESP32_GENERIC_C3"
+
+BOARDS_INPUT="${1:?Usage: $0 <BOARD|ALL> <TAG> <VERSION>
+Supported boards: ALL  ESP8266_GENERIC  ESP32_GENERIC  ESP32_GENERIC_S3  ESP32_GENERIC_C3
+Example: $0 ALL v1.27.0 v1.1.1}"
+TAG="${2:?Usage: $0 <BOARD|ALL> <TAG> <VERSION>}"
+VERSION="${3:?Usage: $0 <BOARD|ALL> <TAG> <VERSION>}"
+
+if [[ "$BOARDS_INPUT" == "ALL" ]]; then
+  for b in $ALL_BOARDS; do
+    "$0" "$b" "$TAG" "$VERSION"
+  done
+  exit 0
+elif [[ "$BOARDS_INPUT" == *","* ]]; then
+  IFS=',' read -ra BOARD_LIST <<< "$BOARDS_INPUT"
+  for b in "${BOARD_LIST[@]}"; do
+    "$0" "$b" "$TAG" "$VERSION"
+  done
+  exit 0
+fi
+
+BOARD="$BOARDS_INPUT"
 OUTPUT_NAME="${BOARD}-${TAG}-PEPEUNIT-${VERSION}.bin"
 
 ROOT_DIR=$(cd "$(dirname "$0")" && pwd)
@@ -42,10 +59,17 @@ if [[ -z "${FROZEN_MANIFEST:-}" && -f "$DEFAULT_MANIFEST" ]]; then
   FROZEN_MANIFEST="$DEFAULT_MANIFEST"
 fi
 
+export PEPEUNIT_SRC_DIR="$ROOT_DIR/src"
+
 echo "==> Board: $BOARD | Tag: $TAG | Output: $OUTPUT_NAME"
 
-git -C "$MPY_DIR" fetch --tags --quiet || true
-git -C "$MPY_DIR" checkout -q "$TAG"
+if [[ ! -d "$MPY_DIR" ]]; then
+  echo "==> Cloning MicroPython repository (shallow, tag $TAG)..."
+  git -c advice.detachedHead=false clone --depth 1 -b "$TAG" https://github.com/micropython/micropython.git "$MPY_DIR"
+else
+  git -C "$MPY_DIR" fetch --depth 1 origin tag "$TAG" --no-tags -q || true
+  git -c advice.detachedHead=false -C "$MPY_DIR" checkout -q "$TAG"
+fi
 
 echo "==> Building mpy-cross"
 make -C "$MPY_DIR/mpy-cross" -j"$(nproc)"
@@ -85,14 +109,15 @@ else
     echo "==> Using existing ESP-IDF from environment"
     eval "${IDF_TOOLS_EXPORT_CMD}"
   else
-    echo "==> Ensuring ESP-IDF locally: $IDF_VERSION (with submodules)"
     if [[ ! -d "$IDF_DIR" ]]; then
-      git clone -q -b "$IDF_VERSION" --recursive https://github.com/espressif/esp-idf.git "$IDF_DIR"
+      echo "==> Cloning ESP-IDF $IDF_VERSION (shallow)..."
+      git -c advice.detachedHead=false clone --depth 1 -b "$IDF_VERSION" https://github.com/espressif/esp-idf.git "$IDF_DIR"
     else
-      git -C "$IDF_DIR" fetch -q origin "$IDF_VERSION" || true
-      git -C "$IDF_DIR" checkout -q "$IDF_VERSION"
-      git -C "$IDF_DIR" submodule update --init --recursive -q
+      git -C "$IDF_DIR" fetch --depth 1 -q origin "$IDF_VERSION" || true
+      git -c advice.detachedHead=false -C "$IDF_DIR" checkout -q "$IDF_VERSION"
     fi
+    echo "==> Updating ESP-IDF submodules (shallow, parallel — this may take several minutes)..."
+    git -C "$IDF_DIR" submodule update --init --recursive --depth 1 --jobs "$(nproc)"
     echo "==> Installing ESP-IDF tools for $IDF_TARGET (first run only) ... (this may take several minutes)"
     pushd "$IDF_DIR" >/dev/null
     export IDF_TOOLS_PATH="$MPY_DIR/.espressif"
@@ -129,8 +154,8 @@ echo "==> Updating submodules for $PORT_DIR"
 make -C "$PORT_BUILD_DIR" submodules
 
 echo "==> Cleaning previous build and frozen content"
-make -C "$PORT_BUILD_DIR" clean-modules || true
-make -C "$PORT_BUILD_DIR" clean || true
+make -C "$PORT_BUILD_DIR" BOARD="$BOARD" clean-modules || true
+make -C "$PORT_BUILD_DIR" BOARD="$BOARD" clean || true
 
 echo "==> Building firmware"
 BUILD_ARGS=(BOARD="$BOARD")

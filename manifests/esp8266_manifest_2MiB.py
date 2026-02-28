@@ -11,4 +11,5 @@ require("ssd1306")
 require("upysh")
 
 # Freeze all project modules from the external src directory
-freeze("/home/w7a8n1y4a/Documents/gitlab/pepe/pepeunit/libs/pepeunit_micropython_client/src")
+import os
+freeze(os.environ["PEPEUNIT_SRC_DIR"])
