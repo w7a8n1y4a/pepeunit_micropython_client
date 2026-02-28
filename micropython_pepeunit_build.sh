@@ -23,6 +23,7 @@ elif [[ "$BOARDS_INPUT" == *","* ]]; then
 fi
 
 BOARD="$BOARDS_INPUT"
+[[ "$VERSION" != v* ]] && VERSION="v${VERSION}"
 OUTPUT_NAME="${BOARD}-${TAG}-PEPEUNIT-${VERSION}.bin"
 
 ROOT_DIR=$(cd "$(dirname "$0")" && pwd)

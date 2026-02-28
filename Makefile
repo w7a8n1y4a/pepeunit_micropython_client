@@ -1,6 +1,6 @@
 BOARD   ?= ESP32_GENERIC
 TAG     ?= v1.27.0
-VERSION ?= v1.1.1
+VERSION ?= $(shell git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
 PORT    ?= /dev/ttyUSB0
 
 .PHONY: help install build full-update add-rules-tty connect-with-screen clean

@@ -7,6 +7,7 @@ Example: $0 ESP32_GENERIC v1.27.0 v1.1.1 /dev/ttyUSB0}"
 TAG="${2:?Usage: $0 <BOARD> <TAG> <VERSION> <PORT>}"
 VERSION="${3:?Usage: $0 <BOARD> <TAG> <VERSION> <PORT>}"
 PORT="${4:?Usage: $0 <BOARD> <TAG> <VERSION> <PORT>}"
+[[ "$VERSION" != v* ]] && VERSION="v${VERSION}"
 BIN_NAME="${BOARD}-${TAG}-PEPEUNIT-${VERSION}.bin"
 
 case "$BOARD" in

@@ -18,8 +18,8 @@ WORKDIR /project
 COPY . .
 
 ARG BOARDS=ALL
-ARG TAG=v1.27.0
-ARG VERSION=v1.1.1
+ARG TAG
+ARG VERSION
 
 RUN chmod +x micropython_pepeunit_build.sh \
     && ./micropython_pepeunit_build.sh "${BOARDS}" "${TAG}" "${VERSION}" \
